@@ -1,0 +1,89 @@
+{
+  "tables": [
+    {
+      "name": "Authors",
+      "primaryField": "Canonical ID",
+      "fields": [
+        {"name": "Canonical ID", "type": "singleLineText"},
+        {"name": "Name", "type": "singleLineText"},
+        {"name": "LinkedIn URL", "type": "url"},
+        {"name": "Role", "type": "singleLineText"},
+        {"name": "Author Type", "type": "singleSelect", "options": ["thinker", "interpreter_connector", "operator", "promoter", "unknown"]},
+        {"name": "Author Type Text", "type": "singleLineText"},
+        {"name": "Author Score", "type": "number"},
+        {"name": "Geography", "type": "singleLineText"},
+        {"name": "Language Hints", "type": "singleLineText"},
+        {"name": "Rationale", "type": "multilineText"},
+        {"name": "Last Seen", "type": "dateTime"}
+      ]
+    },
+    {
+      "name": "Posts",
+      "primaryField": "Canonical ID",
+      "fields": [
+        {"name": "Canonical ID", "type": "singleLineText"},
+        {"name": "Post URL", "type": "url"},
+        {"name": "Author Canonical ID", "type": "singleLineText"},
+        {"name": "Author Name", "type": "singleLineText"},
+        {"name": "Author Role", "type": "singleLineText"},
+        {"name": "Post Text", "type": "multilineText"},
+        {"name": "Published At", "type": "dateTime"},
+        {"name": "Language", "type": "singleLineText"},
+        {"name": "Post Score", "type": "number"},
+        {"name": "Author Score Snapshot", "type": "number"},
+        {"name": "Discussion Value", "type": "number"},
+        {"name": "Strategic Interaction Potential", "type": "number"},
+        {"name": "Recommended Action", "type": "singleSelect", "options": ["follow", "connect", "comment", "monitor", "quote_post_candidate", "ignore"]},
+        {"name": "Recommended Action Text", "type": "singleLineText"},
+        {"name": "Relevance Tags", "type": "multipleSelects"},
+        {"name": "Low Value Flags", "type": "multipleSelects"},
+        {"name": "Emerging Themes", "type": "multipleSelects"},
+        {"name": "Relevance Tags Text", "type": "multilineText"},
+        {"name": "Low Value Flags Text", "type": "multilineText"},
+        {"name": "Emerging Themes Text", "type": "multilineText"},
+        {"name": "Why Relevant", "type": "multilineText"},
+        {"name": "Key Thesis", "type": "multilineText"},
+        {"name": "Scoring Rationale", "type": "multilineText"},
+        {"name": "Search Keywords Text", "type": "multilineText"},
+        {"name": "Raw Source", "type": "multilineText"},
+        {"name": "Seen At", "type": "dateTime"}
+      ]
+    },
+    {
+      "name": "Comments",
+      "primaryField": "Canonical ID",
+      "fields": [
+        {"name": "Canonical ID", "type": "singleLineText"},
+        {"name": "Parent Post ID", "type": "singleLineText"},
+        {"name": "Parent Post URL", "type": "url"},
+        {"name": "Commenter Name", "type": "singleLineText"},
+        {"name": "Commenter URL", "type": "url"},
+        {"name": "Comment Text", "type": "multilineText"},
+        {"name": "Comment Score", "type": "number"},
+        {"name": "Hidden Thinker", "type": "checkbox"},
+        {"name": "Discussion Value", "type": "number"},
+        {"name": "Recommended Action", "type": "singleSelect", "options": ["follow", "connect", "comment", "monitor", "quote_post_candidate", "ignore"]},
+        {"name": "Recommended Action Text", "type": "singleLineText"},
+        {"name": "Why Relevant", "type": "multilineText"},
+        {"name": "Seen At", "type": "dateTime"}
+      ]
+    },
+    {
+      "name": "Daily_Digests",
+      "primaryField": "Canonical ID",
+      "fields": [
+        {"name": "Canonical ID", "type": "singleLineText"},
+        {"name": "Digest Date", "type": "date"},
+        {"name": "Telegram Text", "type": "multilineText"},
+        {"name": "Top Post Count", "type": "number"},
+        {"name": "Top Comment Count", "type": "number"},
+        {"name": "Emerging Themes", "type": "multipleSelects"},
+        {"name": "Emerging Themes Text", "type": "multilineText"},
+        {"name": "Search Keywords Text", "type": "multilineText"},
+        {"name": "Sent Status", "type": "singleSelect", "options": ["prepared", "sent", "failed"]},
+        {"name": "Sent Status Text", "type": "singleLineText"},
+        {"name": "Sent At", "type": "dateTime"}
+      ]
+    }
+  ]
+}

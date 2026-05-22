@@ -1,0 +1,175 @@
+{
+  "name": "LinkedIn Post Search - Rate Limited",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "9d15d5b3-66d9-4b4f-a2a8-4a1d5f6a8f21",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const defaultQueries = [\n  'assortment planning',\n  'assortment strategy',\n  'buying strategy',\n  'collection merchandising',\n  'sell-through analytics',\n  'merchandising blind spots',\n  'retail transformation',\n  'experiential retail',\n  'editorial retail',\n  'clienteling',\n  'product customer mismatch',\n  'identity mismatch',\n  'expectation mismatch',\n  'limitations of sell-through analytics'\n];\n\nconst readJsonEnv = (value, fallback) => {\n  if (!value) return fallback;\n  try {\n    const parsed = JSON.parse(value);\n    if (Array.isArray(parsed)) return parsed.filter(Boolean).map((entry) => String(entry).trim()).filter(Boolean);\n  } catch {\n    return fallback;\n  }\n  return fallback;\n};\n\nconst queries = readJsonEnv($env.SEARCH_QUERIES_JSON, defaultQueries);\nconst maxPosts = Number($env.APIFY_MAX_POSTS || 5);\nconst maxReactions = Number($env.APIFY_MAX_REACTIONS || 5);\nconst delaySeconds = Number($env.APIFY_BETWEEN_QUERY_SECONDS || 7);\n\nreturn queries.map((searchQuery, index) => ({\n  json: {\n    searchQuery,\n    queryIndex: index + 1,\n    maxPosts,\n    maxReactions,\n    postNestedComments: false,\n    postNestedReactions: false,\n    scrapeComments: false,\n    scrapeReactions: false,\n    delaySeconds\n  }\n}));"
+      },
+      "id": "2d29b7c8-53d9-4b28-877b-5bd936a56c0f",
+      "name": "Prepare Search Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "86d4b1a6-e3df-4a3d-bb8d-43a8f9c0f8c7",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/actor-tasks/{{$env.APIFY_TASK_ID}}/run-sync-get-dataset-items?token={{$env.APIFY_TOKEN}}&timeout={{$env.APIFY_TIMEOUT_SECONDS || 300}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { searchQueries: [$json.searchQuery], maxPosts: $json.maxPosts, maxReactions: $json.maxReactions, postNestedComments: $json.postNestedComments, postNestedReactions: $json.postNestedReactions, scrapeComments: $json.scrapeComments, scrapeReactions: $json.scrapeReactions } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 360000
+        }
+      },
+      "id": "72c6ea6a-91f5-4e4d-8af7-5e51b6d4a83a",
+      "name": "Run Apify Search Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const delaySeconds = Number($env.APIFY_BETWEEN_QUERY_SECONDS || 7);\nconst delayMs = Math.max(1000, delaySeconds * 1000);\n\nreturn new Promise((resolve) => setTimeout(() => resolve(items), delayMs));"
+      },
+      "id": "1e3c0fd9-54fd-4d34-8940-5f9121ab4c0d",
+      "name": "Pause Between Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = [];\nfor (const item of items) {\n  const value = item.json;\n  if (Array.isArray(value)) rows.push(...value);\n  else if (Array.isArray(value.items)) rows.push(...value.items);\n  else if (Array.isArray(value.data)) rows.push(...value.data);\n  else rows.push(value);\n}\n\nconst seen = new Set();\nconst uniqueRows = [];\nfor (const row of rows) {\n  const key = String(row.canonical_id || row.id || row.urn || row.url || row.postUrl || JSON.stringify(row).slice(0, 200));\n  if (seen.has(key)) continue;\n  seen.add(key);\n  uniqueRows.push(row);\n}\n\nreturn [{\n  json: {\n    total_results: rows.length,\n    unique_results: uniqueRows.length,\n    sample_results: uniqueRows.slice(0, 20),\n    collected_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "5f07f6d8-83ef-4cc3-b0bc-ef0bbad31cc3",
+      "name": "Summarize Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Run Apify Search Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarize Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Search Task": {
+      "main": [
+        [
+          {
+            "node": "Pause Between Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause Between Requests": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-05-20T00:00:00.000Z",
+  "versionId": "5f38aa3c-9b4c-4d39-8b8d-2e428d9a2e4c"
+}

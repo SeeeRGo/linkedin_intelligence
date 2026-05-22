@@ -1,0 +1,28 @@
+{
+  "name": "linkedin-discourse-intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "build:web:watch": "node scripts/build-web.mjs --watch",
+    "predev": "pnpm build:web",
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "convex:dev": "convex dev",
+    "test": "node scripts/validate-artifacts.mjs",
+    "create:airtable-schema": "node scripts/create-airtable-schema.mjs --apply"
+  },
+  "dependencies": {
+    "apify-client": "^2.23.3",
+    "convex": "^1.19.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

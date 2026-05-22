@@ -1,0 +1,193 @@
+{
+  "name": "LinkedIn Single Post Scoring Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4d4b9b80-0d8d-4efb-8a7d-2b1c4c3d1d01",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const benchmarkUrl = 'https://www.linkedin.com/posts/sabrina-compagno-6a410823_il-retail-multibrand-italiano-si-sta-reinventando-share-7457398029000806400-B4kD';\n\nconst parseInput = (value) => {\n  if (!value) return null;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return null;\n  }\n};\n\nconst fixture = parseInput($env.TEST_POST_JSON);\nconst testPostUrl = String($env.TEST_POST_URL || (fixture && fixture.url) || benchmarkUrl);\nconst apifyOverride = parseInput($env.APIFY_TEST_INPUT_JSON);\nconst apifyInput = apifyOverride && typeof apifyOverride === 'object' && !Array.isArray(apifyOverride)\n  ? apifyOverride\n  : {\n      startUrls: [{ url: testPostUrl }],\n      urls: [testPostUrl],\n      url: testPostUrl,\n      postUrl: testPostUrl,\n      scrapeComments: true,\n      scrapeReactions: false,\n      postNestedComments: true,\n      postNestedReactions: false\n    };\n\nreturn [{\n  json: {\n    test_post_url: testPostUrl,\n    expected: (fixture && fixture.expected) || null,\n    apify_input: apifyInput,\n    seen_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d7ee7c85-5f5f-4a91-aee7-8f11c3e55b4d",
+      "name": "Prepare Test Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/actor-tasks/{{$env.APIFY_TASK_ID}}/run-sync-get-dataset-items?token={{$env.APIFY_TOKEN}}&timeout={{$env.APIFY_TIMEOUT_SECONDS || 300}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.apify_input}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 360000
+        }
+      },
+      "id": "a8af8c34-5cbf-42d0-97d0-e8985c4a6933",
+      "name": "Run Apify Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseInput = (value) => {\n  if (!value) return null;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return null;\n  }\n};\n\nconst fixture = parseInput($env.TEST_POST_JSON);\nconst expected = (fixture && fixture.expected) || null;\nconst testPostUrl = String($env.TEST_POST_URL || (fixture && fixture.url) || '');\n\nconst rows = [];\nfor (const item of items) {\n  const value = item.json;\n  if (Array.isArray(value)) rows.push(...value);\n  else if (Array.isArray(value.items)) rows.push(...value.items);\n  else if (Array.isArray(value.data)) rows.push(...value.data);\n  else rows.push(value);\n}\n\nconst pick = (obj, keys) => {\n  for (const key of keys) {\n    const value = obj && obj[key];\n    if (value !== undefined && value !== null && value !== '') return value;\n  }\n  return '';\n};\nconst clean = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst hash = (input) => {\n  let h = 2166136261;\n  const text = String(input || '');\n  for (let i = 0; i < text.length; i += 1) {\n    h ^= text.charCodeAt(i);\n    h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);\n  }\n  return (h >>> 0).toString(36);\n};\nconst toAirtableDate = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();\n  if (typeof value === 'number') {\n    const date = new Date(value > 1e12 ? value : value * 1000);\n    return Number.isNaN(date.getTime()) ? null : date.toISOString();\n  }\n  if (typeof value === 'string') {\n    const parsed = new Date(value);\n    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();\n  }\n  if (typeof value === 'object') {\n    const candidates = [value.iso, value.value, value.datetime, value.dateTime, value.publishedAt, value.published_at, value.time, value.timestamp, value.ts, value.date, value.createdAt, value.created_at];\n    for (const candidate of candidates) {\n      const converted = toAirtableDate(candidate);\n      if (converted) return converted;\n    }\n    return null;\n  }\n  const parsed = new Date(String(value));\n  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();\n};\nconst makeAuthor = (source, fallbackName, fallbackUrl) => {\n  const author = source || {};\n  const name = clean(pick(author, ['name', 'fullName', 'author_name', 'authorName', 'userName', 'profileName']) || fallbackName);\n  const url = String(pick(author, ['url', 'linkedinUrl', 'profileUrl', 'author_url', 'authorUrl', 'authorProfileUrl']) || fallbackUrl || '');\n  const role = clean(pick(author, ['headline', 'role', 'title', 'authorRole', 'authorHeadline']) || '');\n  return {\n    canonical_id: String(url || name || `author:${hash(fallbackName || fallbackUrl || 'unknown')}`),\n    name: name || 'Unknown author',\n    url,\n    role\n  };\n};\nconst makeComment = (comment, index, groupKey) => {\n  const author = comment.author || comment.user || comment.profile || {};\n  const authorName = clean(pick(author, ['name', 'fullName', 'author_name', 'authorName', 'userName', 'profileName']) || pick(comment, ['authorName', 'userName', 'name', 'author_name']) || 'Unknown author');\n  const authorUrl = String(pick(author, ['url', 'linkedinUrl', 'profileUrl', 'author_url', 'authorUrl']) || pick(comment, ['authorUrl', 'profileUrl', 'author_url']) || '');\n  const text = clean(pick(comment, ['text', 'commentText', 'content', 'body']));\n  const canonicalId = String(pick(comment, ['canonical_id', 'id', 'urn']) || `comment:${index + 1}:${hash(`${groupKey}:${authorName}:${text}`)}`);\n  return {\n    canonical_id: canonicalId,\n    author_name: authorName,\n    author_url: authorUrl,\n    author: makeAuthor(author, authorName, authorUrl),\n    text\n  };\n};\n\nconst groups = new Map();\nconst ensureGroup = (key) => {\n  if (!groups.has(key)) {\n    groups.set(key, {\n      canonical_id: key,\n      url: '',\n      text: '',\n      published_at: null,\n      author: { canonical_id: '', name: '', url: '', role: '' },\n      comments: [],\n      commentKeys: new Set(),\n      rawSources: []\n    });\n  }\n  return groups.get(key);\n};\nconst addComment = (group, comment) => {\n  if (!comment || !comment.text) return;\n  const key = `${comment.canonical_id}|${comment.author_name}|${comment.text}`;\n  if (group.commentKeys.has(key)) return;\n  group.commentKeys.add(key);\n  group.comments.push(comment);\n};\n\nfor (const row of rows) {\n  const postAuthor = row.author || row.user || row.profile || row.owner || {};\n  const postUrl = String(pick(row, ['url', 'postUrl', 'link', 'linkedinUrl', 'postLink']) || '');\n  const parentUrl = String(pick(row, ['parentUrl', 'parentPostUrl', 'parentPostURL']) || '');\n  const text = clean(pick(row, ['text', 'postText', 'content', 'description', 'body', 'commentary']));\n  const authorName = clean(pick(postAuthor, ['name', 'fullName', 'author_name', 'authorName', 'userName', 'profileName']) || pick(row, ['authorName', 'userName', 'profileName', 'author_name', 'name']));\n  const authorUrl = String(pick(postAuthor, ['url', 'linkedinUrl', 'profileUrl', 'author_url', 'authorUrl', 'authorProfileUrl']) || pick(row, ['authorUrl', 'profileUrl', 'author_url']) || '');\n  const authorRole = clean(pick(postAuthor, ['headline', 'role', 'title', 'authorRole', 'authorHeadline']) || pick(row, ['authorHeadline', 'authorRole', 'headline']));\n  const canonicalId = String(pick(row, ['canonical_id', 'id', 'urn', 'activityId', 'postId']) || postUrl || parentUrl || `post:${hash(`${authorName}:${text}`)}`);\n  const groupKey = parentUrl || postUrl || canonicalId;\n  const group = ensureGroup(groupKey);\n\n  if (!group.canonical_id || String(group.canonical_id).startsWith('post:')) group.canonical_id = canonicalId;\n  if (!group.url) group.url = postUrl || parentUrl;\n  if (text && (!group.text || text.length > group.text.length)) group.text = text;\n  if (!group.published_at) group.published_at = toAirtableDate(pick(row, ['publishedAt', 'postedAt', 'date', 'createdAt', 'timestamp', 'published_at']));\n  if (authorName && !group.author.name) group.author.name = authorName;\n  if (authorUrl && !group.author.url) group.author.url = authorUrl;\n  if (authorRole && !group.author.role) group.author.role = authorRole;\n  if (!group.author.canonical_id) group.author.canonical_id = authorUrl || group.author.name || `author:${hash(groupKey)}`;\n  group.rawSources.push(JSON.stringify(row).slice(0, 20000));\n\n  const commentsValue = pick(row, ['comments', 'replies', 'postComments', 'topComments']);\n  if (Array.isArray(commentsValue)) {\n    commentsValue.slice(0, 20).forEach((comment, index) => addComment(group, makeComment(comment, index, groupKey)));\n  }\n\n  const rowType = String(pick(row, ['content_type', 'type', 'recordType', 'objectType']) || '').toLowerCase();\n  const looksLikeComment = rowType.includes('comment') || Boolean(pick(row, ['parentId', 'parentUrn', 'parentPostId', 'parentCommentId', 'replyTo', 'inReplyTo']));\n  if (looksLikeComment && text) {\n    addComment(group, makeComment({ ...row, text }, group.comments.length, groupKey));\n  }\n}\n\nconst candidates = [...groups.values()].filter((group) => group.text || group.comments.length);\nif (!candidates.length) {\n  throw new Error('Apify returned no parseable LinkedIn post records for the provided URL.');\n}\n\ncandidates.sort((a, b) => {\n  const aMatch = testPostUrl && a.url === testPostUrl ? 1 : 0;\n  const bMatch = testPostUrl && b.url === testPostUrl ? 1 : 0;\n  if (bMatch !== aMatch) return bMatch - aMatch;\n  if (b.comments.length !== a.comments.length) return b.comments.length - a.comments.length;\n  return String(b.text || '').length - String(a.text || '').length;\n});\n\nconst primary = candidates[0];\nreturn [{\n  json: {\n    canonical_id: primary.canonical_id,\n    content_type: primary.comments.length ? 'post_with_comments' : 'post',\n    url: primary.url || testPostUrl,\n    published_at: primary.published_at,\n    author: primary.author,\n    text: primary.text,\n    comments: primary.comments,\n    expected,\n    raw_source: JSON.stringify(rows).slice(0, 90000),\n    apify_item_count: rows.length,\n    seen_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "c96e4e62-1efb-4e31-87ad-6fbece2ed6ad",
+      "name": "Normalize Apify Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $env.OPENAI_SCORING_MODEL || 'gpt-5.4-mini', input: [ { role: 'system', content: 'You are the scoring layer for a Fashion Merchandising and Retail Discourse Intelligence System. Score LinkedIn posts, authors, and comments for strategic monitoring value. The system is not looking for generic fashion content. It is looking for discussions about how customer decisions are formed, interpreted, and misunderstood inside modern retail and merchandising systems. Core thesis: Modern fashion merchandising and retail measure outcomes well, but often poorly understand the real processes behind customer decision formation: fit perception, body proportions, color perception, emotional confidence, identity alignment, lifestyle compatibility, aspirations, uncertainty, mismatch, and retail experience. High-value signals: structural transformation in merchandising or retail; blind spots in sell-through, conversion, returns, rotations, or performance analytics; hidden customer logic or missing decision visibility; editorial retail, experiential retail, clienteling, identity-driven retail, or retail meaning; product/customer, fit, identity, expectation, or emotional mismatch; comments that contain thoughtful replies, disagreement, intellectual continuation, or hidden thinkers; content that creates a natural opening to extend the conceptual framework. Low-value signals: generic trend reports; outfit-only or aesthetic-only posts; motivational content; hiring spam; generic AI hype; pure KPI optimization; shallow luxury commentary; pure product promotion. Author types: thinker, interpreter_connector, operator, promoter, unknown. Scoring: author_score 0-100 based on thinking depth, discourse relevance, seniority/credibility, network centrality signals, and openness to new frameworks; post_score 0-100 based on thematic relevance, conceptual depth, discussion potential, strategic value, and novelty; comment_score 0-100 based on discussion depth, intellectual engagement, hidden-thinker signal, and continuation value. Return only JSON matching the provided schema. Do not include prose outside JSON.' }, { role: 'user', content: 'Analyze this single LinkedIn record and return strict JSON.\\n\\n' + JSON.stringify($json, null, 2) } ], text: { format: { type: 'json_schema', name: 'discourse_score', strict: true, schema: { type: 'object', additionalProperties: false, required: ['canonical_id','content_type','language','author_type','author_score','post_score','comment_score','discussion_value','strategic_interaction_potential','recommended_action','relevance_tags','low_value_flags','emerging_themes','why_relevant','key_thesis','rationale','confidence'], properties: { canonical_id: { type: 'string' }, content_type: { type: 'string', enum: ['post','comment','post_with_comments'] }, language: { type: 'string', enum: ['en','it','fr','es','other','unknown'] }, author_type: { type: 'string', enum: ['thinker','interpreter_connector','operator','promoter','unknown'] }, author_score: { type: 'integer', minimum: 0, maximum: 100 }, post_score: { type: 'integer', minimum: 0, maximum: 100 }, comment_score: { type: 'integer', minimum: 0, maximum: 100 }, discussion_value: { type: 'integer', minimum: 0, maximum: 100 }, strategic_interaction_potential: { type: 'integer', minimum: 0, maximum: 100 }, recommended_action: { type: 'string', enum: ['follow','connect','comment','monitor','quote_post_candidate','ignore'] }, relevance_tags: { type: 'array', items: { type: 'string', enum: ['merchandising','assortment_planning','retail_transformation','editorial_retail','experiential_retail','luxury_retail','clienteling','customer_decision_making','subjective_decision_layer','mismatch','blind_spots','retail_intelligence','industry_evolution','low_value'] } }, low_value_flags: { type: 'array', items: { type: 'string', enum: ['generic_trend_report','outfit_only','motivational','hiring_spam','generic_ai_hype','pure_kpi_optimization','shallow_luxury_commentary','product_promotion','none'] } }, emerging_themes: { type: 'array', items: { type: 'string' } }, why_relevant: { type: 'string' }, key_thesis: { type: 'string' }, rationale: { type: 'string' }, confidence: { type: 'number', minimum: 0, maximum: 1 } } } } } } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "bc2fd8c4-9c03-4f62-8d56-0e80b4fb4f90",
+      "name": "Score with OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const readOutputText = (response) => {\n  if (response.output_text) return response.output_text;\n  if (Array.isArray(response.output)) {\n    for (const output of response.output) {\n      for (const content of output.content || []) {\n        if (content.type === 'output_text' && content.text) return content.text;\n        if (content.text) return content.text;\n      }\n    }\n  }\n  if (response.choices && response.choices[0] && response.choices[0].message) return response.choices[0].message.content;\n  return '';\n};\n\nreturn items.map((item) => {\n  const source = item.json;\n  const text = readOutputText(source);\n  let score;\n  try {\n    score = JSON.parse(text);\n  } catch (error) {\n    score = {\n      canonical_id: source?.canonical_id || 'parse_error',\n      content_type: 'post',\n      language: 'unknown',\n      author_type: 'unknown',\n      author_score: 0,\n      post_score: 0,\n      comment_score: 0,\n      discussion_value: 0,\n      strategic_interaction_potential: 0,\n      recommended_action: 'ignore',\n      relevance_tags: ['low_value'],\n      low_value_flags: ['none'],\n      emerging_themes: [],\n      why_relevant: '',\n      key_thesis: '',\n      rationale: `OpenAI response parse failed: ${error.message}`,\n      confidence: 0\n    };\n  }\n\n  const band = (value) => {\n    const n = Number(value || 0);\n    if (n >= 75) return 'high';\n    if (n >= 45) return 'medium';\n    return 'low';\n  };\n\n  const expected = source.expected || null;\n  const comparison = expected ? {\n    post_score: expected.post_score || null,\n    author_score: expected.author_score || null,\n    discussion_value: expected.discussion_value || null,\n    strategic_interaction_potential: expected.strategic_interaction_potential || null,\n    matches_expected: {\n      post_score: expected.post_score ? band(score.post_score) === expected.post_score : null,\n      author_score: expected.author_score ? band(score.author_score) === expected.author_score : null,\n      discussion_value: expected.discussion_value ? band(score.discussion_value) === expected.discussion_value : null,\n      strategic_interaction_potential: expected.strategic_interaction_potential ? band(score.strategic_interaction_potential) === expected.strategic_interaction_potential : null\n    }\n  } : null;\n\n  return {\n    json: {\n      test_input: {\n        canonical_id: source.canonical_id,\n        url: source.url || '',\n        author: source.author || null,\n        text: source.text || '',\n        comments: source.comments || [],\n        expected\n      },\n      score,\n      score_bands: {\n        author_score: band(score.author_score),\n        post_score: band(score.post_score),\n        comment_score: band(score.comment_score),\n        discussion_value: band(score.discussion_value),\n        strategic_interaction_potential: band(score.strategic_interaction_potential)\n      },\n      comparison,\n      openai_response_id: source.id || ''\n    }\n  };\n});"
+      },
+      "id": "3b1fd3d6-919a-4d50-9a03-78f83f3dd736",
+      "name": "Parse Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Test Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Test Link": {
+      "main": [
+        [
+          {
+            "node": "Run Apify Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Task": {
+      "main": [
+        [
+          {
+            "node": "Normalize Apify Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Apify Results": {
+      "main": [
+        [
+          {
+            "node": "Score with OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score with OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Parse Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-05-20T00:00:00.000Z",
+  "versionId": "d7a1be52-4019-4d5e-a700-dcce7b54f8b2"
+}
