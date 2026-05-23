@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "allowJs": true,
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -10,6 +11,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "convex/**/*.ts"],
+  "include": ["env-loader.js", "src/**/*.ts", "convex/**/*.ts"],
   "exclude": ["convex/_generated", "node_modules", "dist"]
 }
