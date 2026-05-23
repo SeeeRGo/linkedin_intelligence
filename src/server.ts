@@ -69,10 +69,10 @@ const getPostByCanonicalId = async (canonicalId: string): Promise<StoredPost | n
 const mergeCommentLists = (primary: StoredComment[], secondary: StoredComment[]): StoredComment[] => {
   const merged = new Map<string, StoredComment>();
   for (const comment of [...primary, ...secondary]) {
-    merged.set(comment.canonicalId, comment);
+    merged.set(comment.canonical_id, comment);
   }
   return [...merged.values()].sort(
-    (a, b) => (b.commentScore ?? 0) - (a.commentScore ?? 0) || b.seenAt - a.seenAt
+    (a, b) => (b.comment_score ?? 0) - (a.comment_score ?? 0) || b.seen_at - a.seen_at
   );
 };
 
@@ -230,7 +230,7 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
     const manualReasoning = typeof record.manualReasoning === "string" ? record.manualReasoning.trim() : "";
 
     await convex.mutation("posts.updateManualAnnotation", {
-      canonicalId: post.canonicalId || canonicalId,
+      canonicalId: post.canonical_id || canonicalId,
       manualScore,
       manualReasoning
     });

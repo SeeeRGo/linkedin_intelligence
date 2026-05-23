@@ -20,6 +20,7 @@ export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknow
   searches: config.keywords,
   queries: config.keywords,
   searchQueries: config.keywords,
+  postedLimit: "24h",
   maxItems: config.maxPosts,
   maxPosts: config.maxPosts,
   ...parseJsonObject(config.postsInputJson)
