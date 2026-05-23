@@ -1,12 +1,43 @@
 import type { AppConfig } from "../config.js";
-import type { StoredComment, StoredPost } from "./types.js";
 
 type TelegramOptions = {
   botToken: string;
   chatIds: string[];
 };
 
-type DigestCandidate = StoredPost | StoredComment;
+type ScoreLike = {
+  post_score?: number;
+  comment_score?: number;
+  discussion_value?: number;
+  strategic_interaction_potential?: number;
+  recommended_action?: string;
+  emerging_themes?: string[];
+};
+
+type DigestAuthorLike = {
+  name?: string;
+};
+
+type DigestBaseLike = {
+  author?: DigestAuthorLike;
+  url?: string;
+  text?: string;
+  keyword?: string;
+  score?: ScoreLike;
+  postScore?: number;
+  commentScore?: number;
+  parent_post_url?: string;
+  parentPostUrl?: string;
+  recommendedAction?: string;
+  relevanceTags?: string[];
+  lowValueFlags?: string[];
+};
+
+type DigestPostLike = DigestBaseLike & {
+};
+
+type DigestCommentLike = DigestBaseLike & {
+};
 
 const parseTelegramError = async (response: Response): Promise<string> => {
   const text = await response.text();
@@ -57,21 +88,21 @@ export const sendTelegramMessage = async (text: string, options: TelegramOptions
   }
 };
 
-const overallScore = (candidate: DigestCandidate): number => {
-  const score = (candidate.score || {}) as Record<string, unknown>;
+const overallScore = (candidate: DigestPostLike | DigestCommentLike): number => {
+  const score = (candidate.score || {}) as ScoreLike;
   return Math.max(
-    Number(score.post_score || 0),
-    Number(score.comment_score || 0),
+    Number(candidate.postScore || score.post_score || 0),
+    Number(candidate.commentScore || score.comment_score || 0),
     Number(score.discussion_value || 0),
     Number(score.strategic_interaction_potential || 0)
   );
 };
 
-const displayAuthorName = (candidate: DigestCandidate): string => candidate.author?.name || "Unknown author";
+const displayAuthorName = (candidate: DigestPostLike | DigestCommentLike): string => candidate.author?.name || "Unknown author";
 
-const buildKeywordLines = (posts: StoredPost[], maxLinksPerKeyword: number, minScore: number): string[] => {
+const buildKeywordLines = (posts: DigestPostLike[], maxLinksPerKeyword: number, minScore: number): string[] => {
   const relevantPosts = posts.filter((candidate) => overallScore(candidate) >= minScore && candidate.score?.recommended_action !== "ignore");
-  const keywordGroups = new Map<string, StoredPost[]>();
+  const keywordGroups = new Map<string, DigestPostLike[]>();
 
   for (const candidate of relevantPosts) {
     const keyword = String(candidate.keyword || "unclassified").trim() || "unclassified";
@@ -98,7 +129,7 @@ const buildKeywordLines = (posts: StoredPost[], maxLinksPerKeyword: number, minS
   });
 };
 
-const buildCommentLines = (comments: StoredComment[], maxCommentHighlights: number, minScore: number): string[] => {
+const buildCommentLines = (comments: DigestCommentLike[], maxCommentHighlights: number, minScore: number): string[] => {
   const relevantComments = comments.filter((candidate) => overallScore(candidate) >= minScore && candidate.score?.recommended_action !== "ignore");
 
   return relevantComments
@@ -107,14 +138,14 @@ const buildCommentLines = (comments: StoredComment[], maxCommentHighlights: numb
     .slice(0, maxCommentHighlights)
     .map((candidate) => {
       const score = overallScore(candidate);
-      const parentLink = candidate.parent_post_url || candidate.url || "";
+      const parentLink = candidate.parent_post_url || candidate.parentPostUrl || candidate.url || "";
       const label = displayAuthorName(candidate);
       const link = parentLink ? `${label} (${parentLink})` : label;
       return `${link} - ${score}/100${candidate.text ? `\n${candidate.text.slice(0, 220)}` : ""}`;
     });
 };
 
-const buildThemeLines = (posts: StoredPost[], comments: StoredComment[], minScore: number): string[] => {
+const buildThemeLines = (posts: DigestPostLike[], comments: DigestCommentLike[], minScore: number): string[] => {
   const themeCounts = new Map<string, number>();
   for (const candidate of [...posts, ...comments]) {
     if (overallScore(candidate) < minScore || candidate.score?.recommended_action === "ignore") continue;
@@ -128,7 +159,7 @@ const buildThemeLines = (posts: StoredPost[], comments: StoredComment[], minScor
   return [...themeCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([theme]) => theme);
 };
 
-export const buildDailyDigestText = (posts: StoredPost[], comments: StoredComment[], config: AppConfig): string => {
+export const buildDailyDigestText = (posts: DigestPostLike[], comments: DigestCommentLike[], config: AppConfig): string => {
   const date = new Date().toISOString().slice(0, 10);
   const keywordLines = buildKeywordLines(posts, config.telegramMaxLinksPerKeyword, config.telegramMinScore);
   const commentLines = buildCommentLines(comments, config.telegramMaxCommentHighlights, config.telegramMinScore);
@@ -149,7 +180,7 @@ export const buildDailyDigestText = (posts: StoredPost[], comments: StoredCommen
   return text;
 };
 
-export const sendDailyDigest = async (posts: StoredPost[], comments: StoredComment[], config: AppConfig): Promise<boolean> => {
+export const sendDailyDigest = async (posts: DigestPostLike[], comments: DigestCommentLike[], config: AppConfig): Promise<boolean> => {
   if (!config.telegramBotToken || !config.telegramChatIds.length) return false;
   const text = buildDailyDigestText(posts, comments, config);
   await sendTelegramMessage(text, {
