@@ -109,13 +109,14 @@ export const normalizeCommentRecords = (items: unknown[], parentPosts: StoredPos
       const actor = item.actor ?? item.author;
       const postId = stringValue(item.postId) || stringValue(item.parentPostId) || parent?.canonical_id || "";
       const url = stringValue(item.linkedinUrl) || (parentUrl ? `${parentUrl}#comment-${stringValue(item.id)}` : "");
+      const parentPostCanonicalId = canonicalFromUrl(postId) || parent?.canonical_id || "";
 
       const comment: NormalizedComment = {
         canonical_id: stringValue(item.id) || canonicalFromUrl(url),
         content_type: "comment",
         url,
         text: stringValue(item.commentary) || stringValue(item.text) || stringValue(item.content),
-        parent_post_canonical_id: postId,
+        parent_post_canonical_id: parentPostCanonicalId,
         parent_post_url: parentUrl || parent?.url || "",
         keyword: parent?.keyword || "",
         created_at: stringValue(item.createdAt),

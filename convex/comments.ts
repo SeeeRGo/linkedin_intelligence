@@ -1,5 +1,20 @@
+import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server.js";
 import { v } from "convex/values";
+
+const parentPostCanonicalIdCandidates = (parentPostCanonicalId: string): string[] => {
+  const value = parentPostCanonicalId.trim();
+  if (!value) return [];
+
+  const candidates = new Set<string>([value]);
+  if (!value.startsWith("urn:li:")) {
+    candidates.add(`urn:li:activity:${value}`);
+    candidates.add(`urn:li:ugcPost:${value}`);
+    candidates.add(`urn:li:share:${value}`);
+  }
+
+  return [...candidates];
+};
 
 export const upsertMany = mutation({
   args: {
@@ -47,14 +62,26 @@ export const listByPost = query({
     limit: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const comments = await ctx.db
-      .query("comments")
-      .withIndex("by_parent", (q) => q.eq("parentPostCanonicalId", args.parentPostCanonicalId))
-      .take(args.limit ?? 50);
+    const limit = args.limit ?? 50;
+    const commentsByCanonicalId = new Map<string, Doc<"comments">>();
+    for (const candidate of parentPostCanonicalIdCandidates(args.parentPostCanonicalId)) {
+      const matches = await ctx.db
+        .query("comments")
+        .withIndex("by_parent", (q) => q.eq("parentPostCanonicalId", candidate))
+        .take(limit);
+      for (const comment of matches) {
+        commentsByCanonicalId.set(comment.canonicalId, comment);
+      }
+      if (commentsByCanonicalId.size >= limit) {
+        break;
+      }
+    }
 
-    return comments.sort(
+    const comments = [...commentsByCanonicalId.values()].sort(
       (a, b) => (b.commentScore ?? 0) - (a.commentScore ?? 0) || b.seenAt - a.seenAt
     );
+
+    return comments.slice(0, limit);
   }
 });
 
