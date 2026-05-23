@@ -52,6 +52,8 @@ type Post = {
   text?: string;
   url?: string;
   postScore?: number;
+  manualScore?: number;
+  manualReasoning?: string;
   recommendedAction?: string;
   relevanceTags?: string[];
   engagement?: {
@@ -94,6 +96,14 @@ type Comment = {
   };
 };
 
+type CommentsResponse = {
+  comments: Comment[];
+  matchSource: "canonical" | "url" | "none";
+  parsedCount: number;
+  linkedinCommentCount: number;
+  parentPostUrl?: string;
+};
+
 type Draft = {
   _id?: string;
   name: string;
@@ -106,6 +116,11 @@ type Draft = {
   keywordsText: string;
   postsInputJson: string;
   commentsInputJson: string;
+};
+
+type ManualPostDraft = {
+  score: string;
+  reasoning: string;
 };
 
 const defaultDraft = (): Draft => ({
@@ -168,6 +183,8 @@ const formatStartedAt = (startedAt?: number): string => (startedAt ? new Date(st
 
 const commentScoreValue = (comment: Comment): number => comment.commentScore || comment.score?.comment_score || 0;
 
+const manualScoreValue = (post: Post): string => (post.manualScore === undefined || post.manualScore === null ? "" : String(post.manualScore));
+
 const App = () => {
   const [health, setHealth] = useState<Health>({});
   const [draft, setDraft] = useState<Draft>(defaultDraft());
@@ -177,6 +194,7 @@ const App = () => {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedComment, setSelectedComment] = useState<Comment | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsSummary, setCommentsSummary] = useState<CommentsResponse | null>(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [runs, setRuns] = useState<Run[]>([]);
   const [message, setMessage] = useState({ text: "Loading...", tone: "muted" as "muted" | "error" });
@@ -185,6 +203,8 @@ const App = () => {
   const [telegramMessage, setTelegramMessage] = useState("Test message from the LinkedIn intelligence React UI.");
   const [isSendingTelegram, setIsSendingTelegram] = useState(false);
   const [isSendingDigest, setIsSendingDigest] = useState(false);
+  const [manualPostDrafts, setManualPostDrafts] = useState<Record<string, ManualPostDraft>>({});
+  const [savingManualPostId, setSavingManualPostId] = useState<string | null>(null);
   const [postFilter, setPostFilter] = useState("");
   const [scoreFilter, setScoreFilter] = useState("0");
   const commentsPanelRef = useRef<HTMLElement | null>(null);
@@ -222,6 +242,65 @@ const App = () => {
   const loadPosts = async () => {
     const nextPosts = await responseJson<Post[]>("/api/posts?limit=200");
     setPosts(nextPosts);
+  };
+
+  const setManualDraft = (postId: string, patch: Partial<ManualPostDraft>) => {
+    setManualPostDrafts((current) => ({
+      ...current,
+      [postId]: {
+        score: current[postId]?.score ?? "",
+        reasoning: current[postId]?.reasoning ?? "",
+        ...patch
+      }
+    }));
+  };
+
+  const getManualDraft = (post: Post): ManualPostDraft => {
+    const postId = post.canonicalId || "";
+    return (
+      manualPostDrafts[postId] || {
+        score: manualScoreValue(post),
+        reasoning: post.manualReasoning || ""
+      }
+    );
+  };
+
+  const saveManualAnnotation = async (post: Post) => {
+    if (!post.canonicalId) {
+      setMessage({ text: "This post is missing a canonical ID, so it cannot be annotated.", tone: "error" });
+      return;
+    }
+
+    const draft = getManualDraft(post);
+    const manualScoreText = draft.score.trim();
+    if (!manualScoreText) {
+      setMessage({ text: "Manual score is required.", tone: "error" });
+      return;
+    }
+
+    const manualScore = Number(manualScoreText);
+    if (!Number.isFinite(manualScore)) {
+      setMessage({ text: "Manual score must be a number.", tone: "error" });
+      return;
+    }
+
+    setSavingManualPostId(post.canonicalId);
+    try {
+      await responseJson<{ ok: boolean }>("/api/posts/manual-score", {
+        method: "POST",
+        body: JSON.stringify({
+          canonicalId: post.canonicalId,
+          manualScore,
+          manualReasoning: draft.reasoning.trim()
+        })
+      });
+      setMessage({ text: "Manual annotation saved.", tone: "muted" });
+      await loadPosts();
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : "Failed to save manual annotation.", tone: "error" });
+    } finally {
+      setSavingManualPostId(null);
+    }
   };
 
   const sendTelegramTest = async () => {
@@ -266,12 +345,15 @@ const App = () => {
     setSelectedPost(post);
     setSelectedComment(null);
     setComments([]);
+    setCommentsSummary(null);
     setCommentsLoading(true);
     commentsPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     try {
-      const nextComments = await responseJson<Comment[]>(
+      const response = await responseJson<CommentsResponse>(
         `/api/comments?parentPostCanonicalId=${encodeURIComponent(post.canonicalId)}&limit=50`
       );
+      const nextComments = response.comments || [];
+      setCommentsSummary(response);
       setComments(nextComments);
       setSelectedComment(nextComments[0] || null);
     } catch (error) {
@@ -609,6 +691,7 @@ const App = () => {
         <div className="posts">
           {filteredPosts.map((post, index) => {
             const tags = [...(post.relevanceTags || []), post.recommendedAction].filter(Boolean).join(" / ");
+            const manualDraft = getManualDraft(post);
 
             return (
               <article className="post" key={`${post.url || post.keyword || index}-${index}`}>
@@ -618,7 +701,18 @@ const App = () => {
                     <h3>{post.author?.name || "Unknown author"}</h3>
                     <div className="meta">{post.author?.role || ""}</div>
                   </div>
-                  <span className="score">{post.postScore || 0}</span>
+                  <div className="score-stack">
+                    <div className="score-block">
+                      <span className="score-label">AI</span>
+                      <span className="score">{post.postScore || 0}</span>
+                    </div>
+                    <div className="score-block">
+                      <span className="score-label">Manual</span>
+                      <span className={`score manual-score${post.manualScore === undefined ? " empty" : ""}`}>
+                        {post.manualScore === undefined ? "—" : post.manualScore}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <p className="snippet">
                   {String(post.text || "").slice(0, 520)}
@@ -626,11 +720,39 @@ const App = () => {
                 </p>
                 <div className="tags">{tags}</div>
                 <div className="meta">
-                  likes {post.engagement?.likes || 0}, comments {post.engagement?.comments || 0}
+                  likes {post.engagement?.likes || 0}, LinkedIn comments {post.engagement?.comments || 0}
+                </div>
+                <div className="manual-annotation">
+                  <label>
+                    Manual score
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={manualDraft.score}
+                      onChange={(event) => setManualDraft(post.canonicalId || "", { score: event.target.value })}
+                    />
+                  </label>
+                  <label className="wide">
+                    Manual reasoning
+                    <textarea
+                      rows={4}
+                      value={manualDraft.reasoning}
+                      onChange={(event) => setManualDraft(post.canonicalId || "", { reasoning: event.target.value })}
+                      placeholder="Why did you score this post the way you did?"
+                    />
+                  </label>
                 </div>
                 <div className="post-actions">
                   <button className="button ghost" onClick={() => void loadComments(post)}>
                     View comments
+                  </button>
+                  <button
+                    className="button ghost"
+                    onClick={() => void saveManualAnnotation(post)}
+                    disabled={savingManualPostId === post.canonicalId}
+                  >
+                    {savingManualPostId === post.canonicalId ? "Saving..." : "Save manual annotation"}
                   </button>
                   <a href={post.url} target="_blank" rel="noreferrer">
                     Open LinkedIn post
@@ -654,6 +776,26 @@ const App = () => {
                 <button className="button ghost" onClick={() => void loadComments(selectedPost)}>
                   Refresh comments
                 </button>
+              </div>
+              <div className="comment-summary">
+                <div>
+                  <span className="detail-label">LinkedIn comments</span>
+                  <strong>{commentsSummary?.linkedinCommentCount ?? selectedPost.engagement?.comments ?? 0}</strong>
+                </div>
+                <div>
+                  <span className="detail-label">Parsed comments</span>
+                  <strong>{commentsSummary?.parsedCount ?? comments.length}</strong>
+                </div>
+                <div>
+                  <span className="detail-label">Loaded from</span>
+                  <strong>
+                    {commentsSummary?.matchSource === "canonical"
+                      ? "Canonical ID"
+                      : commentsSummary?.matchSource === "url"
+                        ? "Post URL fallback"
+                        : "No parsed match"}
+                  </strong>
+                </div>
               </div>
               {commentsLoading ? (
                 <p className="meta">Loading comments...</p>
@@ -773,7 +915,11 @@ const App = () => {
                   </div>
                 </>
               ) : (
-                <p className="meta">No comments available for this post.</p>
+                <p className="meta">
+                  {commentsSummary?.parsedCount
+                    ? "Parsed comments were found but none matched the current view."
+                    : `LinkedIn shows ${selectedPost.engagement?.comments || 0} comments, but none are parsed and stored yet.`}
+                </p>
               )}
             </article>
           ) : (

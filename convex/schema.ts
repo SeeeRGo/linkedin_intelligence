@@ -43,6 +43,9 @@ export default defineSchema({
     recommendedAction: v.optional(v.string()),
     relevanceTags: v.optional(v.array(v.string())),
     lowValueFlags: v.optional(v.array(v.string())),
+    manualScore: v.optional(v.number()),
+    manualReasoning: v.optional(v.string()),
+    manualScoreUpdatedAt: v.optional(v.number()),
     rawSource: v.any(),
     seenAt: v.number()
   })
@@ -67,5 +70,6 @@ export default defineSchema({
   })
     .index("by_canonical", ["canonicalId"])
     .index("by_parent", ["parentPostCanonicalId"])
+    .index("by_parentPostUrl", ["parentPostUrl"])
     .index("by_seenAt", ["seenAt"])
 });

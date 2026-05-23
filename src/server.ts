@@ -61,6 +61,21 @@ const getActiveConfig = async (): Promise<TaskConfigRecord> => {
   return config ?? defaultTaskConfig();
 };
 
+const getPostByCanonicalId = async (canonicalId: string): Promise<StoredPost | null> =>
+  convex.query<StoredPost | null>("posts.getByCanonicalId", {
+    canonicalId
+  });
+
+const mergeCommentLists = (primary: StoredComment[], secondary: StoredComment[]): StoredComment[] => {
+  const merged = new Map<string, StoredComment>();
+  for (const comment of [...primary, ...secondary]) {
+    merged.set(comment.canonicalId, comment);
+  }
+  return [...merged.values()].sort(
+    (a, b) => (b.commentScore ?? 0) - (a.commentScore ?? 0) || b.seenAt - a.seenAt
+  );
+};
+
 const getRecentRuns = async (): Promise<RunSummary[]> => convex.query<RunSummary[]>("runs.list", { limit: 20 });
 
 const schedulePipelineExecution = (runId: string, config: TaskConfigRecord) => {
@@ -192,6 +207,38 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
     return;
   }
 
+  if (url.pathname === "/api/posts/manual-score" && req.method === "POST") {
+    const body = await readBody(req);
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const canonicalId = typeof record.canonicalId === "string" ? record.canonicalId.trim() : "";
+    if (!canonicalId) {
+      sendJson(res, 400, { error: "canonicalId is required." });
+      return;
+    }
+
+    const post = await getPostByCanonicalId(canonicalId);
+    if (!post) {
+      sendJson(res, 404, { error: `Post not found: ${canonicalId}` });
+      return;
+    }
+
+    const manualScore = Number(record.manualScore);
+    if (!Number.isFinite(manualScore)) {
+      sendJson(res, 400, { error: "manualScore must be a number." });
+      return;
+    }
+    const manualReasoning = typeof record.manualReasoning === "string" ? record.manualReasoning.trim() : "";
+
+    await convex.mutation("posts.updateManualAnnotation", {
+      canonicalId: post.canonicalId || canonicalId,
+      manualScore,
+      manualReasoning
+    });
+
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (url.pathname === "/api/telegram/test" && req.method === "POST") {
     const body = await readBody(req);
     const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
@@ -227,14 +274,27 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
       return;
     }
 
-    sendJson(
-      res,
-      200,
-      await convex.query("comments.listByPost", {
-        parentPostCanonicalId,
-        limit: Number(url.searchParams.get("limit")) || 50
-      })
-    );
+    const limit = Number(url.searchParams.get("limit")) || 50;
+    const post = await getPostByCanonicalId(parentPostCanonicalId);
+    const canonicalComments: StoredComment[] = await convex.query("comments.listByPost", {
+      parentPostCanonicalId,
+      limit
+    });
+    const urlComments: StoredComment[] = post?.url
+      ? await convex.query("comments.listByParentUrl", {
+          parentPostUrl: post.url,
+          limit
+        })
+      : [];
+
+    const comments = mergeCommentLists(canonicalComments, urlComments);
+    sendJson(res, 200, {
+      comments,
+      matchSource: canonicalComments.length ? "canonical" : urlComments.length ? "url" : "none",
+      parsedCount: comments.length,
+      linkedinCommentCount: post?.engagement?.comments ?? 0,
+      parentPostUrl: post?.url ?? ""
+    });
     return;
   }
 

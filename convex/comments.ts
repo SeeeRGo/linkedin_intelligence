@@ -58,6 +58,23 @@ export const listByPost = query({
   }
 });
 
+export const listByParentUrl = query({
+  args: {
+    parentPostUrl: v.string(),
+    limit: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const comments = await ctx.db
+      .query("comments")
+      .withIndex("by_parentPostUrl", (q) => q.eq("parentPostUrl", args.parentPostUrl))
+      .take(args.limit ?? 50);
+
+    return comments.sort(
+      (a, b) => (b.commentScore ?? 0) - (a.commentScore ?? 0) || b.seenAt - a.seenAt
+    );
+  }
+});
+
 export const list = query({
   args: {
     limit: v.optional(v.number())

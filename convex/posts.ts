@@ -16,6 +16,11 @@ export const upsertMany = mutation({
       const canonicalId = String(post.canonical_id ?? "");
       if (!canonicalId) continue;
 
+      const existing = await ctx.db
+        .query("posts")
+        .withIndex("by_canonical", (q) => q.eq("canonicalId", canonicalId))
+        .first();
+
       const payload = {
         canonicalId,
         url: String(post.url ?? ""),
@@ -31,14 +36,12 @@ export const upsertMany = mutation({
         recommendedAction: typeof score?.recommended_action === "string" ? score.recommended_action : undefined,
         relevanceTags: Array.isArray(score?.relevance_tags) ? (score.relevance_tags as string[]) : undefined,
         lowValueFlags: Array.isArray(score?.low_value_flags) ? (score.low_value_flags as string[]) : undefined,
+        manualScore: existing?.manualScore,
+        manualReasoning: existing?.manualReasoning,
+        manualScoreUpdatedAt: existing?.manualScoreUpdatedAt,
         rawSource: post.raw_source ?? {},
         seenAt: Date.parse(String(post.seen_at ?? "")) || Date.now()
       };
-
-      const existing = await ctx.db
-        .query("posts")
-        .withIndex("by_canonical", (q) => q.eq("canonicalId", canonicalId))
-        .first();
 
       if (existing) {
         await ctx.db.patch(existing._id, payload);
@@ -59,5 +62,41 @@ export const list = query({
       .withIndex("by_seenAt")
       .order("desc")
       .take(args.limit ?? 100);
+  }
+});
+
+export const getByCanonicalId = query({
+  args: {
+    canonicalId: v.string()
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("posts")
+      .withIndex("by_canonical", (q) => q.eq("canonicalId", args.canonicalId))
+      .first();
+  }
+});
+
+export const updateManualAnnotation = mutation({
+  args: {
+    canonicalId: v.string(),
+    manualScore: v.number(),
+    manualReasoning: v.string()
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("posts")
+      .withIndex("by_canonical", (q) => q.eq("canonicalId", args.canonicalId))
+      .first();
+
+    if (!existing) {
+      throw new Error(`Post not found: ${args.canonicalId}`);
+    }
+
+    await ctx.db.patch(existing._id, {
+      manualScore: args.manualScore,
+      manualReasoning: args.manualReasoning,
+      manualScoreUpdatedAt: Date.now()
+    });
   }
 });
