@@ -6,8 +6,10 @@
   "scripts": {
     "build:web": "node scripts/build-web.mjs",
     "build:web:watch": "node scripts/build-web.mjs --watch",
+    "build": "pnpm build:web && tsc",
     "predev": "pnpm build:web",
     "dev": "tsx src/server.ts",
+    "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit",
     "convex:dev": "convex dev",
     "test": "node scripts/validate-artifacts.mjs",
