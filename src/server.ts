@@ -3,11 +3,14 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { defaultTaskConfig, loadAppConfig } from "./config.js";
+import { buildCommentsInput, runApifyTask } from "./pipeline/apify.js";
 import { ConvexGateway } from "./pipeline/convex.js";
+import { normalizeCommentRecords } from "./pipeline/normalize.js";
+import { failedScore, scoreRecord } from "./pipeline/openai.js";
 import { runScoringPipeline } from "./pipeline/runPipeline.js";
 import { formatDailyRunSchedule, shouldTriggerDailyRun, type RunSummary } from "./pipeline/scheduler.js";
 import { sendDailyDigest, sendTelegramMessage } from "./pipeline/telegram.js";
-import type { TaskConfigRecord } from "./pipeline/types.js";
+import type { StoredPost, TaskConfigRecord } from "./pipeline/types.js";
 
 type PostRecord = {
   canonicalId: string;
@@ -127,6 +130,43 @@ const mergeCommentLists = (primary: CommentRecord[], secondary: CommentRecord[])
 };
 
 const getRecentRuns = async (): Promise<RunSummary[]> => convex.query<RunSummary[]>("runs.list", { limit: 20 });
+
+const scoreComment = async (comment: Parameters<typeof scoreRecord>[0] & { canonical_id: string; content_type: "comment" }, taskConfig: TaskConfigRecord) => {
+  try {
+    return {
+      ...comment,
+      score: await scoreRecord(comment, {
+        apiKey: appConfig.openaiApiKey,
+        model: taskConfig.openaiModel || appConfig.openaiScoringModel
+      })
+    };
+  } catch (error) {
+    return { ...comment, score: failedScore(comment, error) };
+  }
+};
+
+const hydrateCommentsForPost = async (post: PostRecord): Promise<number> => {
+  if (!appConfig.apifyToken) return 0;
+
+  const taskConfig = await getActiveConfig();
+  if (!taskConfig.commentsTaskId || !post.url) return 0;
+
+  const commentItems = await runApifyTask(taskConfig.commentsTaskId, buildCommentsInput(taskConfig, post as unknown as StoredPost), {
+    token: appConfig.apifyToken,
+    timeoutSeconds: appConfig.apifyTimeoutSeconds
+  });
+
+  const normalizedComments = normalizeCommentRecords(commentItems, [post as unknown as StoredPost]);
+  if (!normalizedComments.length) return 0;
+
+  const scoredComments = [];
+  for (const comment of normalizedComments) {
+    scoredComments.push(await scoreComment(comment as Parameters<typeof scoreRecord>[0] & { canonical_id: string; content_type: "comment" }, taskConfig));
+  }
+
+  await convex.mutation("comments.upsertMany", { comments: scoredComments });
+  return scoredComments.length;
+};
 
 const schedulePipelineExecution = (runId: string, config: TaskConfigRecord) => {
   setTimeout(() => {
@@ -337,10 +377,31 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
         })
       : [];
 
-    const comments = mergeCommentLists(canonicalComments, urlComments);
+    let comments = mergeCommentLists(canonicalComments, urlComments);
+    let matchSource: "canonical" | "url" | "none" = canonicalComments.length ? "canonical" : urlComments.length ? "url" : "none";
+    if (!comments.length && post?.engagement?.comments && post.engagement.comments > 0) {
+      try {
+        await hydrateCommentsForPost(post);
+        const hydratedCanonicalComments: CommentRecord[] = await convex.query("comments.listByPost", {
+          parentPostCanonicalId,
+          limit
+        });
+        const hydratedUrlComments: CommentRecord[] = post?.url
+          ? await convex.query("comments.listByParentUrl", {
+              parentPostUrl: post.url,
+              limit
+          })
+          : [];
+        comments = mergeCommentLists(hydratedCanonicalComments, hydratedUrlComments);
+        matchSource = hydratedCanonicalComments.length ? "canonical" : hydratedUrlComments.length ? "url" : matchSource;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
     sendJson(res, 200, {
       comments,
-      matchSource: canonicalComments.length ? "canonical" : urlComments.length ? "url" : "none",
+      matchSource,
       parsedCount: comments.length,
       linkedinCommentCount: post?.engagement?.comments ?? 0,
       parentPostUrl: post?.url ?? ""
