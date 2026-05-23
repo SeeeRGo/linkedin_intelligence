@@ -7,7 +7,57 @@ import { ConvexGateway } from "./pipeline/convex.js";
 import { runScoringPipeline } from "./pipeline/runPipeline.js";
 import { formatDailyRunSchedule, shouldTriggerDailyRun, type RunSummary } from "./pipeline/scheduler.js";
 import { sendDailyDigest, sendTelegramMessage } from "./pipeline/telegram.js";
-import type { StoredComment, StoredPost, TaskConfigRecord } from "./pipeline/types.js";
+import type { TaskConfigRecord } from "./pipeline/types.js";
+
+type PostRecord = {
+  canonicalId: string;
+  url: string;
+  text: string;
+  keyword: string;
+  postedAt?: string;
+  author: Record<string, unknown>;
+  engagement: {
+    likes?: number;
+    comments?: number;
+    shares?: number;
+  };
+  score?: Record<string, unknown>;
+  postScore?: number;
+  authorScore?: number;
+  discussionValue?: number;
+  recommendedAction?: string;
+  relevanceTags?: string[];
+  lowValueFlags?: string[];
+  manualScore?: number;
+  manualReasoning?: string;
+  manualScoreUpdatedAt?: number;
+  rawSource: unknown;
+  seenAt: number;
+};
+
+type CommentRecord = {
+  canonicalId: string;
+  parentPostCanonicalId: string;
+  parentPostUrl: string;
+  url: string;
+  text: string;
+  keyword: string;
+  createdAt?: string;
+  author: Record<string, unknown>;
+  engagement: {
+    likes?: number;
+    comments?: number;
+    shares?: number;
+  };
+  score?: {
+    comment_score?: number;
+    recommended_action?: string;
+    relevance_tags?: string[];
+  };
+  commentScore?: number;
+  rawSource: unknown;
+  seenAt: number;
+};
 
 const appConfig = loadAppConfig();
 const convex = new ConvexGateway(appConfig.convexUrl);
@@ -61,18 +111,18 @@ const getActiveConfig = async (): Promise<TaskConfigRecord> => {
   return config ?? defaultTaskConfig();
 };
 
-const getPostByCanonicalId = async (canonicalId: string): Promise<StoredPost | null> =>
-  convex.query<StoredPost | null>("posts.getByCanonicalId", {
+const getPostByCanonicalId = async (canonicalId: string): Promise<PostRecord | null> =>
+  convex.query<PostRecord | null>("posts.getByCanonicalId", {
     canonicalId
   });
 
-const mergeCommentLists = (primary: StoredComment[], secondary: StoredComment[]): StoredComment[] => {
-  const merged = new Map<string, StoredComment>();
+const mergeCommentLists = (primary: CommentRecord[], secondary: CommentRecord[]): CommentRecord[] => {
+  const merged = new Map<string, CommentRecord>();
   for (const comment of [...primary, ...secondary]) {
-    merged.set(comment.canonical_id, comment);
+    merged.set(comment.canonicalId, comment);
   }
   return [...merged.values()].sort(
-    (a, b) => (b.comment_score ?? 0) - (a.comment_score ?? 0) || b.seen_at - a.seen_at
+    (a, b) => (b.commentScore ?? b.score?.comment_score ?? 0) - (a.commentScore ?? a.score?.comment_score ?? 0) || b.seenAt - a.seenAt
   );
 };
 
@@ -230,7 +280,7 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
     const manualReasoning = typeof record.manualReasoning === "string" ? record.manualReasoning.trim() : "";
 
     await convex.mutation("posts.updateManualAnnotation", {
-      canonicalId: post.canonical_id || canonicalId,
+      canonicalId: post.canonicalId || canonicalId,
       manualScore,
       manualReasoning
     });
@@ -256,10 +306,10 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
   }
 
   if (url.pathname === "/api/telegram/digest" && req.method === "POST") {
-    const posts: StoredPost[] = await convex.query("posts.list", {
+    const posts: PostRecord[] = await convex.query("posts.list", {
       limit: Number(url.searchParams.get("postsLimit")) || 200
     });
-    const comments: StoredComment[] = await convex.query("comments.list", {
+    const comments: CommentRecord[] = await convex.query("comments.list", {
       limit: Number(url.searchParams.get("commentsLimit")) || 500
     });
     const sent = await sendDailyDigest(posts, comments, appConfig);
@@ -276,11 +326,11 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
 
     const limit = Number(url.searchParams.get("limit")) || 50;
     const post = await getPostByCanonicalId(parentPostCanonicalId);
-    const canonicalComments: StoredComment[] = await convex.query("comments.listByPost", {
+    const canonicalComments: CommentRecord[] = await convex.query("comments.listByPost", {
       parentPostCanonicalId,
       limit
     });
-    const urlComments: StoredComment[] = post?.url
+    const urlComments: CommentRecord[] = post?.url
       ? await convex.query("comments.listByParentUrl", {
           parentPostUrl: post.url,
           limit
