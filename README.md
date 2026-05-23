@@ -59,7 +59,7 @@ The web app is a React-based local admin UI for configuring Apify task inputs, l
    - `OPENAI_API_KEY`
    - `OPENAI_SCORING_MODEL`
    - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
+   - `TELEGRAM_CHAT_IDS` or `TELEGRAM_CHAT_ID` for one or more Telegram chat IDs
    - optionally `DAILY_RUN_TIME` and `DAILY_RUN_TIMEZONE` to enable automatic daily runs
    The app also accepts `.env`, but `.env.local` is the preferred local override file.
 3. Start Convex codegen/dev in one terminal:
@@ -78,8 +78,8 @@ If you edit the frontend, rebuild the bundle with:
 npm run build:web
 ```
 
-The React UI includes a Telegram test-send panel so you can verify the bot token and chat ID from the browser.
-After a successful run, the app automatically sends the daily digest to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured.
+The React UI includes a Telegram test-send panel so you can verify the bot token and chat IDs from the browser.
+After a successful run, the app automatically sends the daily digest to Telegram when `TELEGRAM_BOT_TOKEN` and at least one Telegram chat ID are configured.
 The same Telegram panel also has a manual `Send daily digest` button that sends the current stored posts/comments digest on demand.
 If `DAILY_RUN_TIME` is set, the server checks once per minute and starts the pipeline automatically after that local time each day, unless a run already happened that day or one is already in progress.
 

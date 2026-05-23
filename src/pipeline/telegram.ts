@@ -3,7 +3,7 @@ import type { StoredComment, StoredPost } from "./types.js";
 
 type TelegramOptions = {
   botToken: string;
-  chatId: string;
+  chatIds: string[];
 };
 
 type DigestCandidate = StoredPost | StoredComment;
@@ -20,17 +20,14 @@ const parseTelegramError = async (response: Response): Promise<string> => {
   }
 };
 
-export const sendTelegramMessage = async (text: string, options: TelegramOptions): Promise<void> => {
-  if (!options.botToken) throw new Error("TELEGRAM_BOT_TOKEN is not configured.");
-  if (!options.chatId) throw new Error("TELEGRAM_CHAT_ID is not configured.");
-
-  const response = await fetch(`https://api.telegram.org/bot${options.botToken}/sendMessage`, {
+const sendTelegramMessageToChat = async (text: string, botToken: string, chatId: string): Promise<void> => {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      chat_id: options.chatId,
+      chat_id: chatId,
       text,
       disable_web_page_preview: false
     })
@@ -38,7 +35,25 @@ export const sendTelegramMessage = async (text: string, options: TelegramOptions
 
   if (!response.ok) {
     const description = await parseTelegramError(response);
-    throw new Error(`Telegram request failed (${response.status}): ${description}`);
+    throw new Error(`Telegram request failed for chat ${chatId} (${response.status}): ${description}`);
+  }
+};
+
+export const sendTelegramMessage = async (text: string, options: TelegramOptions): Promise<void> => {
+  if (!options.botToken) throw new Error("TELEGRAM_BOT_TOKEN is not configured.");
+  if (!options.chatIds.length) throw new Error("TELEGRAM_CHAT_ID or TELEGRAM_CHAT_IDS is not configured.");
+
+  const results = await Promise.allSettled(
+    options.chatIds.map((chatId) => sendTelegramMessageToChat(text, options.botToken, chatId))
+  );
+  const failures = results.flatMap((result, index) => {
+    if (result.status === "fulfilled") return [];
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    return [`${options.chatIds[index]}: ${reason}`];
+  });
+
+  if (failures.length) {
+    throw new Error(`Telegram request failed for ${failures.length}/${options.chatIds.length} chats: ${failures.join(" | ")}`);
   }
 };
 
@@ -135,11 +150,11 @@ export const buildDailyDigestText = (posts: StoredPost[], comments: StoredCommen
 };
 
 export const sendDailyDigest = async (posts: StoredPost[], comments: StoredComment[], config: AppConfig): Promise<boolean> => {
-  if (!config.telegramBotToken || !config.telegramChatId) return false;
+  if (!config.telegramBotToken || !config.telegramChatIds.length) return false;
   const text = buildDailyDigestText(posts, comments, config);
   await sendTelegramMessage(text, {
     botToken: config.telegramBotToken,
-    chatId: config.telegramChatId
+    chatIds: config.telegramChatIds
   });
   return true;
 };

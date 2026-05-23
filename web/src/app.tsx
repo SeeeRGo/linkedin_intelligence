@@ -7,6 +7,7 @@ type Health = {
   apifyConfigured?: boolean;
   openaiConfigured?: boolean;
   telegramConfigured?: boolean;
+  telegramChatIdsCount?: number;
   dailyRunConfigured?: boolean;
   dailyRunTime?: string;
   dailyRunTimezone?: string;
@@ -397,7 +398,12 @@ const App = () => {
           <div>Convex: {health.convexConfigured ? "configured" : "missing"}</div>
           <div>Apify: {health.apifyConfigured ? "configured" : "missing"}</div>
           <div>OpenAI: {health.openaiConfigured ? "configured" : "missing"}</div>
-          <div>Telegram: {health.telegramConfigured ? "configured" : "missing"}</div>
+          <div>
+            Telegram:{" "}
+            {health.telegramConfigured
+              ? `configured (${health.telegramChatIdsCount || 0} chat${health.telegramChatIdsCount === 1 ? "" : "s"})`
+              : "missing"}
+          </div>
           <div>
             Auto-run:{" "}
             {health.dailyRunConfigured ? `daily at ${health.dailyRunTime} ${health.dailyRunTimezone}` : "manual only"}

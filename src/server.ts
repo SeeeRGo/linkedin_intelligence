@@ -148,7 +148,8 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
       convexConfigured: convex.isConfigured(),
       apifyConfigured: Boolean(appConfig.apifyToken),
       openaiConfigured: Boolean(appConfig.openaiApiKey),
-      telegramConfigured: Boolean(appConfig.telegramBotToken && appConfig.telegramChatId),
+      telegramConfigured: Boolean(appConfig.telegramBotToken && appConfig.telegramChatIds.length),
+      telegramChatIdsCount: appConfig.telegramChatIds.length,
       dailyRunConfigured: Boolean(appConfig.dailyRunTime),
       dailyRunTime: appConfig.dailyRunTime || "",
       dailyRunTimezone: appConfig.dailyRunTimezone
@@ -200,7 +201,7 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
 
     await sendTelegramMessage(text, {
       botToken: appConfig.telegramBotToken,
-      chatId: appConfig.telegramChatId
+      chatIds: appConfig.telegramChatIds
     });
 
     sendJson(res, 200, { ok: true });

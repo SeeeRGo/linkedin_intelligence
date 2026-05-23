@@ -69,7 +69,7 @@ Set these environment variables in the n8n runtime:
 - `TEST_POST_JSON` - optional benchmark metadata for expected score comparison
 - `APIFY_TEST_INPUT_JSON` - optional raw body override for the Apify task
 - `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+- `TELEGRAM_CHAT_IDS` or `TELEGRAM_CHAT_ID` - one or more Telegram chat IDs, comma/newline-separated if needed
 
 Run the workflow manually once before enabling the daily schedule.
 
