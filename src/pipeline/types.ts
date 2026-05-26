@@ -37,10 +37,13 @@ export type AuthorScoreResult = {
 export type TaskConfigRecord = {
   _id?: string;
   name: string;
+  profileSearchTaskId: string;
+  profileSearchQueriesText: string;
+  profileSearchInputJson: string;
+  profileSearchMaxProfiles: number;
   postsTaskId: string;
   commentsTaskId: string;
   keywords: string[];
-  authorSeedProfilesText: string;
   maxPosts: number;
   authorTopLimit: number;
   authorMinScore: number;
@@ -137,4 +140,15 @@ export type StoredAuthor = {
   samplePostCount?: number;
   rawSource?: unknown;
   seenAt: number;
+};
+
+export type AuthorDiscoveryRecord = {
+  canonical_id: string;
+  name: string;
+  url: string;
+  role: string;
+  type?: string;
+  discovery_query: string;
+  raw_source: unknown;
+  seen_at: string;
 };

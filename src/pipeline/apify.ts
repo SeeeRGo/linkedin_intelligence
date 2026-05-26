@@ -31,7 +31,6 @@ type AuthorLike = {
 };
 
 export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknown> => {
-  const seedProfiles = parseTextList(config.authorSeedProfilesText);
   return {
     search: config.keywords,
     searches: config.keywords,
@@ -40,8 +39,26 @@ export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknow
     postedLimit: "24h",
     maxItems: config.maxPosts,
     maxPosts: config.maxPosts,
-    ...(seedProfiles.length ? { startUrls: listToStartUrls(seedProfiles), urls: seedProfiles } : {}),
     ...parseJsonObject(config.postsInputJson)
+  };
+};
+
+export const buildProfileSearchInput = (config: TaskConfigRecord, query: string): Record<string, unknown> => {
+  const q = query.trim();
+  const baseInput: Record<string, unknown> = {
+    searchQuery: q,
+    query: q,
+    search: q,
+    searches: [q],
+    profileScraperMode: "Full",
+    maximumNumberOfProfilesToScrape: config.profileSearchMaxProfiles,
+    maxProfiles: config.profileSearchMaxProfiles,
+    maxItems: config.profileSearchMaxProfiles
+  };
+
+  return {
+    ...baseInput,
+    ...parseJsonObject(config.profileSearchInputJson)
   };
 };
 

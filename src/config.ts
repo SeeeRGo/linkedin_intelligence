@@ -52,6 +52,18 @@ export const loadAppConfig = (): AppConfig => ({
 
 export const defaultTaskConfig = () => ({
   name: "Default LinkedIn scoring run",
+  profileSearchTaskId: process.env.APIFY_PROFILE_SEARCH_TASK_ID ?? "",
+  profileSearchQueriesText: [
+    "fashion retail director",
+    "luxury retail VP",
+    "fashion founder",
+    "editor in chief fashion",
+    "chief merchandising officer apparel",
+    "clienteling luxury retail",
+    "retail transformation fashion"
+  ].join("\n"),
+  profileSearchInputJson: "{}",
+  profileSearchMaxProfiles: 20,
   postsTaskId: process.env.APIFY_POSTS_TASK_ID ?? process.env.APIFY_TASK_ID ?? "",
   commentsTaskId: process.env.APIFY_COMMENTS_TASK_ID ?? "",
   keywords: [
@@ -61,17 +73,6 @@ export const defaultTaskConfig = () => ({
     "customer decision making",
     "retail transformation"
   ],
-  authorSeedProfilesText: [
-    "https://www.linkedin.com/in/mary-korlin-downs-614b67128/",
-    "https://www.linkedin.com/in/melissalim89/",
-    "https://www.linkedin.com/in/sabrina-compagno-6a410823/",
-    "https://www.linkedin.com/in/kovacspetra/",
-    "https://www.linkedin.com/in/renatomosca1/",
-    "https://www.linkedin.com/in/francis-pierrel-053b201/",
-    "https://www.linkedin.com/in/matteo-atti-uk/",
-    "https://www.linkedin.com/in/sandrine-crener/",
-    "https://www.linkedin.com/in/nina-skarra-idntfy/"
-  ].join("\n"),
   maxPosts: 25,
   authorTopLimit: 8,
   authorMinScore: 65,

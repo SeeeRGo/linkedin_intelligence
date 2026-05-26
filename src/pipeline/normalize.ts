@@ -1,4 +1,4 @@
-import type { NormalizedAuthor, NormalizedComment, NormalizedPost, StoredPost } from "./types.js";
+import type { AuthorDiscoveryRecord, NormalizedAuthor, NormalizedComment, NormalizedPost, StoredPost } from "./types.js";
 
 const stringValue = (value: unknown): string => (typeof value === "string" ? value : "");
 const numberValue = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
@@ -22,7 +22,7 @@ const authorCanonicalId = (author: Record<string, unknown>): string => {
   const id = stringValue(author.id);
   if (id) return id;
 
-  const url = canonicalizeUrl(stringValue(author.linkedinUrl) || stringValue(author.url));
+  const url = canonicalizeUrl(stringValue(author.linkedinUrl) || stringValue(author.profileUrl) || stringValue(author.url));
   if (url) return url;
 
   const name = stringValue(author.name);
@@ -36,7 +36,7 @@ const unwrapApifyItem = (item: unknown): Record<string, unknown> => {
   return Object.keys(data).length > 0 ? data : record;
 };
 
-const normalizeAuthor = (source: unknown): NormalizedAuthor => {
+export const normalizeAuthor = (source: unknown): NormalizedAuthor => {
   const author = recordOf(source);
   const canonicalId = authorCanonicalId(author);
 
@@ -44,8 +44,17 @@ const normalizeAuthor = (source: unknown): NormalizedAuthor => {
     canonical_id: canonicalId,
     id: stringValue(author.id) || canonicalId,
     name: stringValue(author.name),
-    url: canonicalizeUrl(stringValue(author.linkedinUrl) || stringValue(author.url)),
-    role: stringValue(author.info) || stringValue(author.position),
+    url: canonicalizeUrl(stringValue(author.linkedinUrl) || stringValue(author.profileUrl) || stringValue(author.url)),
+    role:
+      stringValue(author.info) ||
+      stringValue(author.headline) ||
+      stringValue(author.position) ||
+      stringValue(author.currentJobTitle) ||
+      stringValue(author.currentTitle) ||
+      stringValue(author.title) ||
+      stringValue(author.occupation) ||
+      stringValue(author.currentCompany) ||
+      stringValue(author.company),
     type: stringValue(author.type) || undefined
   };
 };
@@ -119,6 +128,37 @@ export const normalizePostRecords = (items: unknown[]): NormalizedPost[] => {
       return post;
     })
     .filter((post) => Boolean(post.canonical_id && (post.url || post.text)));
+};
+
+export const normalizeAuthorDiscoveryRecords = (items: unknown[], discoveryQuery: string): AuthorDiscoveryRecord[] => {
+  const seenAt = new Date().toISOString();
+
+  return items
+    .map(unwrapApifyItem)
+    .filter((item) => {
+      const author = recordOf(item.author ?? item.profile ?? item.person ?? item);
+      return Boolean(
+        stringValue(author.linkedinUrl) ||
+          stringValue(author.profileUrl) ||
+          stringValue(author.url) ||
+          stringValue(author.name) ||
+          stringValue(author.fullName)
+      );
+    })
+    .map((item) => {
+      const author = normalizeAuthor(item.author ?? item.profile ?? item.person ?? item);
+      return {
+        canonical_id: author.canonical_id,
+        name: author.name,
+        url: author.url,
+        role: author.role,
+        type: author.type,
+        discovery_query: discoveryQuery,
+        raw_source: item,
+        seen_at: seenAt
+      };
+    })
+    .filter((record) => Boolean(record.canonical_id && (record.name || record.url)));
 };
 
 export const normalizeCommentRecords = (items: unknown[], parentPosts: StoredPost[] = []): NormalizedComment[] => {

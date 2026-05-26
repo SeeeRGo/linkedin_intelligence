@@ -2,86 +2,66 @@
 
 ## 1. Apify
 
-Create two Apify Actor Tasks:
+Create three Apify Actor Tasks:
 
-- a post discovery task that returns public post text, author metadata, post URL, timestamp, and engagement metrics
-- a comments task that can harvest comments for the selected top posts
+- a profile search task for author discovery
+- an author post collection task
+- a comments task
 
-Configure the task with the initial discovery scope, or override it at runtime through `SEARCH_QUERIES_JSON` / `APIFY_SEARCH_QUERIES_JSON` in the n8n environment:
+Recommended profile-search tuning for this project:
 
-- `assortment planning`
-- `fashion merchandising`
-- `retail transformation`
-- `experiential retail`
-- `editorial retail`
-- `luxury retail clienteling`
-- `customer decision making retail`
-- `merchandising blind spots`
-- `product customer mismatch`
-- the Sabrina Compagno benchmark post URL from `TZ_new.pdf`
+- Profile Scraper Mode: `Full`
+- Search query: one narrow query per run, or one of the saved queries in the web app
+- Maximum number of profiles to scrape: `20`
+- Current Job Title Filter: `Founder`, `CEO`, `Chief Merchandising Officer`, `VP`, `SVP`, `Director`, `Editor-in-Chief`, `Head of Merchandising`
+- Senority Level Filter: `Owner`, `CXO`, `VP`, `Director`
+- Function Filter: `Marketing`, `Operations`, `Purchasing`, `Business Development`, `Media`, `Product`
+- Industry IDs Filter: use fashion, retail, apparel, luxury, or beauty if the actor supports it
 
-The n8n workflow calls the task through:
+If the actor supports raw JSON overrides, use them for titles, seniority, function, and exclusions instead of hardcoding everything in the UI.
 
-```text
-https://api.apify.com/v2/actor-tasks/{APIFY_TASK_ID}/run-sync-get-dataset-items
+The web app calls the task through the Apify HTTP API using the task ID stored in Convex.
+
+## 2. Convex
+
+The app stores authors, posts, comments, task configs, and runs in Convex.
+
+If you want the repo to generate Convex bindings after schema changes, run:
+
+```bash
+npm run convex:dev
 ```
 
-In the daily workflow, the post task runs first and the comment task runs only for the top-scoring posts. The workflow will use `APIFY_POSTS_TASK_ID` and `APIFY_COMMENTS_TASK_ID` if they are set; `APIFY_TASK_ID` remains a fallback shared value.
+## 3. Web App
 
-## 2. Airtable
+Copy `.env.example` to `.env.local` and set:
 
-Create a base with the four tables described in `airtable/schema.json`:
-
-- `Authors`
-- `Posts`
-- `Comments`
-- `Daily_Digests`
-
-Use the `Canonical ID` field in each table as the merge key. The workflow uses Airtable upsert requests with `performUpsert.fieldsToMergeOn = ["Canonical ID"]`.
-
-If you want the repo to create the tables for you, run `npm run create:airtable-schema` with an Airtable PAT that has `schema.bases:read` and `schema.bases:write` on the target base.
-
-## 3. n8n
-
-Import `n8n/workflows/daily_digest.workflow.json`.
-If you want to run discovery in smaller batches to avoid `429 RATE_LIMIT_REACHED`, import `n8n/workflows/rate_limited_search.workflow.json` instead and run it first.
-The main digest workflow now batches Airtable writes in groups of up to 10 records and pauses between write requests. If you still see Airtable rate limits, increase `AIRTABLE_BETWEEN_WRITE_MS` in the n8n runtime.
-The Telegram digest is keyword-grouped and rendered as `keyword - links - score`, with all posts above the score threshold included up to the per-keyword limit. Comments are fetched for top posts in a second Apify pass and shown in a separate section.
-If you want to score one post at a time for debugging or regression checks, import `n8n/workflows/single_post_scoring.workflow.json` and set `TEST_POST_URL` in the n8n runtime. The workflow will send that single LinkedIn link through Apify before scoring it. If your Apify task expects a different body shape, set `APIFY_TEST_INPUT_JSON` to override the request payload.
-
-Set these environment variables in the n8n runtime:
-
+- `CONVEX_URL`
 - `APIFY_TOKEN`
+- `APIFY_PROFILE_SEARCH_TASK_ID`
 - `APIFY_POSTS_TASK_ID`
 - `APIFY_COMMENTS_TASK_ID`
-- `APIFY_TASK_ID` - fallback shared task ID if you only wired one task initially
-- `APIFY_TASK_INPUT_JSON` - optional raw override for the daily Apify task payload
 - `OPENAI_API_KEY`
 - `OPENAI_SCORING_MODEL`
-- `AIRTABLE_API_KEY`
-- `AIRTABLE_BASE_ID`
-- `AIRTABLE_BETWEEN_WRITE_MS`
-- `SEARCH_QUERIES_JSON` - optional JSON array or comma/newline list of discovery keywords
-- `APIFY_SEARCH_QUERIES_JSON` - alias for `SEARCH_QUERIES_JSON`
-- `TELEGRAM_MIN_SCORE` - minimum overall score for inclusion in the digest
-- `TELEGRAM_MAX_LINKS_PER_KEYWORD` - cap on links per keyword line
-- `TEST_POST_URL`
-- `TEST_POST_JSON` - optional benchmark metadata for expected score comparison
-- `APIFY_TEST_INPUT_JSON` - optional raw body override for the Apify task
 - `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_IDS` or `TELEGRAM_CHAT_ID` - one or more Telegram chat IDs, comma/newline-separated if needed
+- `TELEGRAM_CHAT_IDS` or `TELEGRAM_CHAT_ID`
 
-Run the workflow manually once before enabling the daily schedule.
+Then run:
 
-## 4. Validation Run
+```bash
+npm install
+npm run convex:dev
+npm run dev
+```
 
-For the first run, configure the Apify task to include only 3-5 known URLs including the benchmark post. Confirm:
+Open `http://localhost:3000`.
 
-- Airtable receives deduplicated authors, posts, comments, and one digest record.
-- Telegram receives a readable digest.
-- The benchmark post is classified as high-value.
-- Generic promotion and shallow trend content score below the digest threshold.
+## 4. Validation
 
-## 5. Compliance Boundary
+For the first run, start with 3-5 profile-search queries and a profile limit of around 20. Confirm:
 
-Use only data that the collector is legally allowed to collect and that your organization is allowed to process. Before production usage, review LinkedIn terms, Apify actor terms, GDPR, CCPA, and any internal data-retention policy.
+- the author list is populated and ranked
+- the selected authors have relevant posts
+- posts and comments are stored in Convex
+- the Telegram digest is readable
+

@@ -102,11 +102,18 @@ const sanitizeConfig = (body: unknown): TaskConfigRecord => {
   return {
     _id: typeof record._id === "string" ? record._id : undefined,
     name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : defaults.name,
+    profileSearchTaskId:
+      typeof record.profileSearchTaskId === "string" ? record.profileSearchTaskId.trim() : defaults.profileSearchTaskId,
+    profileSearchQueriesText:
+      typeof record.profileSearchQueriesText === "string"
+        ? record.profileSearchQueriesText
+        : defaults.profileSearchQueriesText,
+    profileSearchInputJson:
+      typeof record.profileSearchInputJson === "string" ? record.profileSearchInputJson : defaults.profileSearchInputJson,
+    profileSearchMaxProfiles: Number(record.profileSearchMaxProfiles) || defaults.profileSearchMaxProfiles,
     postsTaskId: typeof record.postsTaskId === "string" ? record.postsTaskId.trim() : defaults.postsTaskId,
     commentsTaskId: typeof record.commentsTaskId === "string" ? record.commentsTaskId.trim() : defaults.commentsTaskId,
     keywords,
-    authorSeedProfilesText:
-      typeof record.authorSeedProfilesText === "string" ? record.authorSeedProfilesText : defaults.authorSeedProfilesText,
     maxPosts: Number(record.maxPosts) || defaults.maxPosts,
     authorTopLimit: Number(record.authorTopLimit) || defaults.authorTopLimit,
     authorMinScore: Number(record.authorMinScore) || defaults.authorMinScore,

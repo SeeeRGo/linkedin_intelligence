@@ -1,12 +1,13 @@
 import type { AppConfig } from "../config.js";
-import { buildAuthorPostsInput, buildCommentsInput, buildPostsInput, runApifyTask } from "./apify.js";
+import { buildAuthorPostsInput, buildCommentsInput, buildPostsInput, buildProfileSearchInput, runApifyTask } from "./apify.js";
 import type { ConvexGateway } from "./convex.js";
-import { normalizeCommentRecords, normalizePostRecords } from "./normalize.js";
+import { normalizeAuthorDiscoveryRecords, normalizeCommentRecords, normalizePostRecords } from "./normalize.js";
 import { failedAuthorScore, failedScore, scoreAuthorRecord, scoreRecord } from "./openai.js";
 import { sendDailyDigest } from "./telegram.js";
-import type { AuthorScoreResult, StoredComment, StoredPost, TaskConfigRecord } from "./types.js";
+import type { AuthorDiscoveryRecord, AuthorScoreResult, StoredComment, StoredPost, TaskConfigRecord } from "./types.js";
 
 type RunStats = {
+  profileSearchQueries: number;
   authorsDiscovered: number;
   authorsScored: number;
   authorsSelected: number;
@@ -17,33 +18,29 @@ type RunStats = {
   commentsScored: number;
 };
 
-type AuthorSamplePost = {
-  canonical_id: string;
-  url: string;
-  text: string;
-  keyword: string;
-  posted_at: string;
-  post_score?: number;
-  relevance_tags?: string[];
-};
-
-type AuthorCandidate = {
-  canonical_id: string;
+type AuthorCandidate = AuthorDiscoveryRecord & {
   content_type: "author";
-  name: string;
-  url: string;
-  role: string;
-  type?: string;
-  discovery_keywords: string[];
-  sample_post_count: number;
-  sample_posts: AuthorSamplePost[];
-  raw_source: unknown;
-  seen_at: string;
+  sample_post_count?: number;
+  sample_posts: Array<{
+    canonical_id: string;
+    url: string;
+    text: string;
+    keyword: string;
+    posted_at: string;
+    post_score?: number;
+    relevance_tags?: string[];
+  }>;
 };
 
 type ScoredAuthorCandidate = AuthorCandidate & {
   score: AuthorScoreResult;
 };
+
+const parseTextList = (value: string): string[] =>
+  value
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
 const scorePost = async (post: StoredPost, appConfig: AppConfig, taskConfig: TaskConfigRecord): Promise<StoredPost> => {
   try {
@@ -97,7 +94,23 @@ const scoreComment = async (
 
 const authorScoreValue = (author: ScoredAuthorCandidate): number => author.score?.author_score ?? 0;
 
-const buildAuthorCandidates = (posts: StoredPost[]): AuthorCandidate[] => {
+const buildCandidatesFromDiscovery = (records: AuthorDiscoveryRecord[]): AuthorCandidate[] => {
+  const deduped = new Map<string, AuthorCandidate>();
+  for (const record of records) {
+    const existing = deduped.get(record.canonical_id);
+    if (existing) continue;
+    deduped.set(record.canonical_id, {
+      ...record,
+      content_type: "author",
+      sample_post_count: 0,
+      sample_posts: []
+    });
+  }
+
+  return [...deduped.values()];
+};
+
+const buildCandidatesFromPosts = (posts: StoredPost[]): AuthorCandidate[] => {
   const authorGroups = new Map<
     string,
     {
@@ -124,9 +137,7 @@ const buildAuthorCandidates = (posts: StoredPost[]): AuthorCandidate[] => {
   }
 
   return [...authorGroups.entries()].map(([canonicalId, entry]) => {
-    const discoveryKeywords = [...new Set(entry.posts.map((post) => post.keyword).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b)
-    );
+    const discoveryQuery = [...new Set(entry.posts.map((post) => post.keyword).filter(Boolean))].join(", ");
     const samplePosts = entry.posts
       .slice()
       .sort((a, b) => (b.postScore ?? 0) - (a.postScore ?? 0) || (b.posted_at || "").localeCompare(a.posted_at || ""))
@@ -148,8 +159,8 @@ const buildAuthorCandidates = (posts: StoredPost[]): AuthorCandidate[] => {
       url: entry.author?.url || "",
       role: entry.author?.role || "",
       type: entry.author?.type,
-      discovery_keywords: discoveryKeywords,
-      sample_post_count: entry.posts.length,
+      discovery_query: discoveryQuery,
+      sample_post_count: samplePosts.length,
       sample_posts: samplePosts,
       raw_source: {
         author: entry.author,
@@ -189,6 +200,11 @@ const topPostsForComments = (posts: StoredPost[], config: TaskConfigRecord): Sto
     .sort((a, b) => (b.score?.post_score ?? 0) - (a.score?.post_score ?? 0))
     .slice(0, config.topPostLimit);
 
+const discoveryQueriesForConfig = (taskConfig: TaskConfigRecord): string[] => {
+  const queries = parseTextList(taskConfig.profileSearchQueriesText);
+  return queries.length ? queries : taskConfig.keywords;
+};
+
 export const runScoringPipeline = async (
   runId: string,
   taskConfig: TaskConfigRecord,
@@ -196,6 +212,7 @@ export const runScoringPipeline = async (
   convex: ConvexGateway
 ) => {
   const stats: RunStats = {
+    profileSearchQueries: 0,
     authorsDiscovered: 0,
     authorsScored: 0,
     authorsSelected: 0,
@@ -206,34 +223,50 @@ export const runScoringPipeline = async (
     commentsScored: 0
   };
 
+  const discoveryQueries = discoveryQueriesForConfig(taskConfig);
+  stats.profileSearchQueries = discoveryQueries.length;
   await convex.mutation("runs.updateStatus", {
     id: runId,
     status: "running",
-    message: "Fetching discovery posts from Apify.",
+    message: "Searching for relevant fashion authors.",
     stats
   });
 
-  const discoveryItems = await runApifyTask(taskConfig.postsTaskId, buildPostsInput(taskConfig), {
-    token: appConfig.apifyToken,
-    timeoutSeconds: appConfig.apifyTimeoutSeconds
-  });
+  const discoveryTaskId = taskConfig.profileSearchTaskId || taskConfig.postsTaskId;
+  const authorDiscoveryRuns: Array<{ query: string; items: unknown[] }> = [];
 
-  const discoveryPosts = normalizePostRecords(discoveryItems);
-  stats.postsFetched = discoveryPosts.length;
+  for (const query of discoveryQueries) {
+    const discoveryInput = taskConfig.profileSearchTaskId
+      ? buildProfileSearchInput(taskConfig, query)
+      : buildPostsInput({
+          ...taskConfig,
+          keywords: [query]
+        });
 
-  const scoredDiscoveryPosts: StoredPost[] = [];
-  for (const post of discoveryPosts) {
-    scoredDiscoveryPosts.push(await scorePost(post, appConfig, taskConfig));
-    stats.postsScored = scoredDiscoveryPosts.length;
+    const items = await runApifyTask(discoveryTaskId, discoveryInput, {
+      token: appConfig.apifyToken,
+      timeoutSeconds: appConfig.apifyTimeoutSeconds
+    });
+    authorDiscoveryRuns.push({ query, items });
     await convex.mutation("runs.updateStatus", {
       id: runId,
       status: "running",
-      message: `Scored discovery posts ${stats.postsScored}/${stats.postsFetched}.`,
+      message: `Collected author candidates for "${query}".`,
       stats
     });
   }
 
-  const authorCandidates = buildAuthorCandidates(scoredDiscoveryPosts);
+  const authorCandidates = taskConfig.profileSearchTaskId
+    ? buildCandidatesFromDiscovery(
+        authorDiscoveryRuns.flatMap(({ query, items }) =>
+          normalizeAuthorDiscoveryRecords(items, query).map((record) => ({
+            ...record,
+            discovery_query: query
+          }))
+        )
+      )
+    : buildCandidatesFromPosts(normalizePostRecords(authorDiscoveryRuns.flatMap((run) => run.items)));
+
   stats.authorsDiscovered = authorCandidates.length;
 
   const scoredAuthors: ScoredAuthorCandidate[] = [];
@@ -296,7 +329,7 @@ export const runScoringPipeline = async (
   }
 
   const finalPosts = mergePostsByCanonicalId(
-    [...scoredDiscoveryPosts, ...scoredAuthorPosts].map((post) => ({
+    [...scoredAuthorPosts].map((post) => ({
       ...post,
       authorScore: post.author?.canonical_id ? authorScoreByCanonicalId.get(post.author.canonical_id) ?? post.authorScore : post.authorScore
     }))

@@ -16,6 +16,10 @@ type Health = {
 type TaskConfig = {
   _id?: string;
   name: string;
+  profileSearchTaskId: string;
+  profileSearchQueriesText: string;
+  profileSearchInputJson: string;
+  profileSearchMaxProfiles: number;
   postsTaskId: string;
   commentsTaskId: string;
   keywords: string[];
@@ -27,7 +31,6 @@ type TaskConfig = {
   minPostScoreForComments: number;
   openaiModel: string;
   postsInputJson: string;
-  authorSeedProfilesText: string;
   authorPostsInputJson: string;
   commentsInputJson: string;
 };
@@ -44,6 +47,7 @@ type Run = {
   startedAt?: number;
   message?: string;
   stats?: {
+    profileSearchQueries?: number;
     authorsDiscovered?: number;
     authorsScored?: number;
     authorsSelected?: number;
@@ -120,6 +124,10 @@ type Draft = {
   _id?: string;
   name: string;
   openaiModel: string;
+  profileSearchTaskId: string;
+  profileSearchQueriesText: string;
+  profileSearchInputJson: string;
+  profileSearchMaxProfiles: string;
   postsTaskId: string;
   commentsTaskId: string;
   maxPosts: string;
@@ -129,7 +137,6 @@ type Draft = {
   topPostLimit: string;
   minPostScoreForComments: string;
   keywordsText: string;
-  authorSeedProfilesText: string;
   postsInputJson: string;
   authorPostsInputJson: string;
   commentsInputJson: string;
@@ -146,6 +153,7 @@ type Author = {
   role?: string;
   url?: string;
   type?: string;
+  discoveryQuery?: string;
   authorScore?: number;
   recommendedAction?: string;
   relevanceTags?: string[];
@@ -172,6 +180,18 @@ type Author = {
 const defaultDraft = (): Draft => ({
   name: "",
   openaiModel: "",
+  profileSearchTaskId: "",
+  profileSearchQueriesText: [
+    "fashion retail director",
+    "luxury retail VP",
+    "fashion founder",
+    "editor in chief fashion",
+    "chief merchandising officer apparel",
+    "clienteling luxury retail",
+    "retail transformation fashion"
+  ].join("\n"),
+  profileSearchInputJson: "{}",
+  profileSearchMaxProfiles: "20",
   postsTaskId: "",
   commentsTaskId: "",
   maxPosts: "25",
@@ -181,17 +201,6 @@ const defaultDraft = (): Draft => ({
   topPostLimit: "8",
   minPostScoreForComments: "55",
   keywordsText: "",
-  authorSeedProfilesText: [
-    "https://www.linkedin.com/in/mary-korlin-downs-614b67128/",
-    "https://www.linkedin.com/in/melissalim89/",
-    "https://www.linkedin.com/in/sabrina-compagno-6a410823/",
-    "https://www.linkedin.com/in/kovacspetra/",
-    "https://www.linkedin.com/in/renatomosca1/",
-    "https://www.linkedin.com/in/francis-pierrel-053b201/",
-    "https://www.linkedin.com/in/matteo-atti-uk/",
-    "https://www.linkedin.com/in/sandrine-crener/",
-    "https://www.linkedin.com/in/nina-skarra-idntfy/"
-  ].join("\n"),
   postsInputJson: "{}",
   authorPostsInputJson: "{}",
   commentsInputJson: "{}"
@@ -219,6 +228,10 @@ const toDraft = (config: TaskConfig): Draft => ({
   _id: config._id,
   name: config.name || "",
   openaiModel: config.openaiModel || "",
+  profileSearchTaskId: config.profileSearchTaskId || "",
+  profileSearchQueriesText: config.profileSearchQueriesText || "",
+  profileSearchInputJson: config.profileSearchInputJson || "{}",
+  profileSearchMaxProfiles: String(config.profileSearchMaxProfiles ?? 20),
   postsTaskId: config.postsTaskId || "",
   commentsTaskId: config.commentsTaskId || "",
   maxPosts: String(config.maxPosts ?? 25),
@@ -228,7 +241,6 @@ const toDraft = (config: TaskConfig): Draft => ({
   topPostLimit: String(config.topPostLimit ?? 8),
   minPostScoreForComments: String(config.minPostScoreForComments ?? 55),
   keywordsText: (config.keywords || []).join("\n"),
-  authorSeedProfilesText: config.authorSeedProfilesText || "",
   postsInputJson: config.postsInputJson || "{}",
   authorPostsInputJson: config.authorPostsInputJson || "{}",
   commentsInputJson: config.commentsInputJson || "{}"
@@ -455,6 +467,10 @@ const App = () => {
       _id: draft._id,
       name: draft.name.trim(),
       openaiModel: draft.openaiModel.trim(),
+      profileSearchTaskId: draft.profileSearchTaskId.trim(),
+      profileSearchQueriesText: draft.profileSearchQueriesText || "",
+      profileSearchInputJson: draft.profileSearchInputJson || "{}",
+      profileSearchMaxProfiles: parseNumber(draft.profileSearchMaxProfiles, 20),
       postsTaskId: draft.postsTaskId.trim(),
       commentsTaskId: draft.commentsTaskId.trim(),
       maxPosts: parseNumber(draft.maxPosts, 25),
@@ -464,7 +480,6 @@ const App = () => {
       topPostLimit: parseNumber(draft.topPostLimit, 8),
       minPostScoreForComments: parseNumber(draft.minPostScoreForComments, 55),
       keywords: parseKeywords(draft.keywordsText),
-      authorSeedProfilesText: draft.authorSeedProfilesText || "",
       postsInputJson: draft.postsInputJson || "{}",
       authorPostsInputJson: draft.authorPostsInputJson || "{}",
       commentsInputJson: draft.commentsInputJson || "{}"
@@ -655,7 +670,24 @@ const App = () => {
               />
             </label>
             <label>
-              Apify posts task ID
+              Profile search task ID
+              <input
+                value={draft.profileSearchTaskId}
+                onChange={(event) => setField("profileSearchTaskId", event.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <label>
+              Profile search max profiles
+              <input
+                value={draft.profileSearchMaxProfiles}
+                onChange={(event) => setField("profileSearchMaxProfiles", event.target.value)}
+                type="number"
+                min="1"
+              />
+            </label>
+            <label>
+              Author post task ID
               <input
                 value={draft.postsTaskId}
                 onChange={(event) => setField("postsTaskId", event.target.value)}
@@ -663,7 +695,7 @@ const App = () => {
               />
             </label>
             <label>
-              Apify comments task ID
+              Comments task ID
               <input
                 value={draft.commentsTaskId}
                 onChange={(event) => setField("commentsTaskId", event.target.value)}
@@ -722,17 +754,25 @@ const App = () => {
               />
             </label>
             <label className="wide">
-              Keywords, one per line
-              <textarea value={draft.keywordsText} onChange={(event) => setField("keywordsText", event.target.value)} rows={6} />
+              Profile search queries, one per line
+              <textarea
+                value={draft.profileSearchQueriesText}
+                onChange={(event) => setField("profileSearchQueriesText", event.target.value)}
+                rows={6}
+              />
             </label>
             <label className="wide">
-              Seed author profiles, one per line
+              Extra profile search Apify input JSON
               <textarea
-                value={draft.authorSeedProfilesText}
-                onChange={(event) => setField("authorSeedProfilesText", event.target.value)}
-                rows={6}
+                value={draft.profileSearchInputJson}
+                onChange={(event) => setField("profileSearchInputJson", event.target.value)}
+                rows={8}
                 spellCheck={false}
               />
+            </label>
+            <label className="wide">
+              Keywords, one per line
+              <textarea value={draft.keywordsText} onChange={(event) => setField("keywordsText", event.target.value)} rows={6} />
             </label>
             <label className="wide">
               Extra posts Apify input JSON
@@ -790,7 +830,8 @@ const App = () => {
                 <div className="meta">{formatStartedAt(run.startedAt)}</div>
                 <div>{run.message || ""}</div>
                 <div className="meta">
-                  authors {run.stats?.authorsScored || 0}/{run.stats?.authorsDiscovered || 0}, selected{" "}
+                  profile queries {run.stats?.profileSearchQueries || 0}, authors {run.stats?.authorsScored || 0}/
+                  {run.stats?.authorsDiscovered || 0}, selected{" "}
                   {run.stats?.authorsSelected || 0}, author posts {run.stats?.authorPostsFetched || 0}
                 </div>
                 <div className="meta">
@@ -871,6 +912,7 @@ const App = () => {
                     <span className="score">{authorScoreValue(author)}</span>
                   </div>
                   <div className="meta">
+                    {author.discoveryQuery ? `${author.discoveryQuery} · ` : ""}
                     {author.samplePostCount || 0} sampled posts{author.url ? " · " : ""}
                     {author.url ? (
                       <a href={author.url} target="_blank" rel="noreferrer">
