@@ -8,11 +8,16 @@ export default defineSchema({
     postsTaskId: v.string(),
     commentsTaskId: v.string(),
     keywords: v.array(v.string()),
+    authorSeedProfilesText: v.string(),
     maxPosts: v.number(),
+    authorTopLimit: v.number(),
+    authorMinScore: v.number(),
+    authorPostsPerAuthor: v.number(),
     topPostLimit: v.number(),
     minPostScoreForComments: v.number(),
     openaiModel: v.string(),
     postsInputJson: v.string(),
+    authorPostsInputJson: v.string(),
     commentsInputJson: v.string(),
     createdAt: v.number(),
     updatedAt: v.number()
@@ -28,12 +33,38 @@ export default defineSchema({
     finishedAt: v.optional(v.number())
   }).index("by_startedAt", ["startedAt"]),
 
+  authors: defineTable({
+    canonicalId: v.string(),
+    url: v.string(),
+    name: v.string(),
+    role: v.string(),
+    type: v.optional(v.string()),
+    score: v.optional(v.any()),
+    authorScore: v.optional(v.number()),
+    authorType: v.optional(v.string()),
+    recommendedAction: v.optional(v.string()),
+    relevanceTags: v.optional(v.array(v.string())),
+    lowValueFlags: v.optional(v.array(v.string())),
+    powerSignals: v.optional(v.array(v.string())),
+    whyRelevant: v.optional(v.string()),
+    keyThesis: v.optional(v.string()),
+    rationale: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    samplePostCount: v.optional(v.number()),
+    rawSource: v.any(),
+    seenAt: v.number()
+  })
+    .index("by_canonical", ["canonicalId"])
+    .index("by_seenAt", ["seenAt"])
+    .index("by_authorScore", ["authorScore"]),
+
   posts: defineTable({
     canonicalId: v.string(),
     url: v.string(),
     text: v.string(),
     keyword: v.string(),
     postedAt: v.optional(v.string()),
+    authorCanonicalId: v.optional(v.string()),
     author: v.any(),
     engagement: v.any(),
     score: v.optional(v.any()),

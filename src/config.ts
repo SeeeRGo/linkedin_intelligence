@@ -61,10 +61,25 @@ export const defaultTaskConfig = () => ({
     "customer decision making",
     "retail transformation"
   ],
+  authorSeedProfilesText: [
+    "https://www.linkedin.com/in/mary-korlin-downs-614b67128/",
+    "https://www.linkedin.com/in/melissalim89/",
+    "https://www.linkedin.com/in/sabrina-compagno-6a410823/",
+    "https://www.linkedin.com/in/kovacspetra/",
+    "https://www.linkedin.com/in/renatomosca1/",
+    "https://www.linkedin.com/in/francis-pierrel-053b201/",
+    "https://www.linkedin.com/in/matteo-atti-uk/",
+    "https://www.linkedin.com/in/sandrine-crener/",
+    "https://www.linkedin.com/in/nina-skarra-idntfy/"
+  ].join("\n"),
   maxPosts: 25,
+  authorTopLimit: 8,
+  authorMinScore: 65,
+  authorPostsPerAuthor: 5,
   topPostLimit: 8,
   minPostScoreForComments: 55,
   openaiModel: process.env.OPENAI_SCORING_MODEL ?? "gpt-5.4-mini",
   postsInputJson: "{}",
+  authorPostsInputJson: "{}",
   commentsInputJson: "{}"
 });

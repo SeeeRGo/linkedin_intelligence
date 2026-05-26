@@ -1,0 +1,103 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "canonical_id",
+    "content_type",
+    "language",
+    "author_type",
+    "author_score",
+    "recommended_action",
+    "relevance_tags",
+    "low_value_flags",
+    "power_signals",
+    "why_relevant",
+    "key_thesis",
+    "rationale",
+    "confidence"
+  ],
+  "properties": {
+    "canonical_id": {
+      "type": "string",
+      "description": "Stable ID for the analyzed author."
+    },
+    "content_type": {
+      "type": "string",
+      "enum": ["author"]
+    },
+    "language": {
+      "type": "string",
+      "enum": ["en", "it", "fr", "es", "other", "unknown"]
+    },
+    "author_type": {
+      "type": "string",
+      "enum": ["thinker", "interpreter_connector", "operator", "promoter", "unknown"]
+    },
+    "author_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": ["follow", "monitor", "ignore"]
+    },
+    "relevance_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "merchandising",
+          "assortment_planning",
+          "retail_transformation",
+          "editorial_retail",
+          "experiential_retail",
+          "luxury_retail",
+          "clienteling",
+          "customer_decision_making",
+          "industry_evolution",
+          "seniority",
+          "thought_leadership",
+          "network_centrality",
+          "low_value"
+        ]
+      }
+    },
+    "low_value_flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "generic_profile",
+          "promotional",
+          "recruiting_only",
+          "low_seniority_signal",
+          "low_domain_signal",
+          "low_thought_depth",
+          "low_engagement_signal",
+          "none"
+        ]
+      }
+    },
+    "power_signals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "why_relevant": {
+      "type": "string"
+    },
+    "key_thesis": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}

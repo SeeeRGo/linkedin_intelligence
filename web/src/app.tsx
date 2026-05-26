@@ -20,10 +20,15 @@ type TaskConfig = {
   commentsTaskId: string;
   keywords: string[];
   maxPosts: number;
+  authorTopLimit: number;
+  authorMinScore: number;
+  authorPostsPerAuthor: number;
   topPostLimit: number;
   minPostScoreForComments: number;
   openaiModel: string;
   postsInputJson: string;
+  authorSeedProfilesText: string;
+  authorPostsInputJson: string;
   commentsInputJson: string;
 };
 
@@ -39,6 +44,10 @@ type Run = {
   startedAt?: number;
   message?: string;
   stats?: {
+    authorsDiscovered?: number;
+    authorsScored?: number;
+    authorsSelected?: number;
+    authorPostsFetched?: number;
     postsScored?: number;
     postsFetched?: number;
     commentsScored?: number;
@@ -52,7 +61,9 @@ type Post = {
   text?: string;
   url?: string;
   postedAt?: string;
+  authorCanonicalId?: string;
   postScore?: number;
+  authorScore?: number;
   manualScore?: number;
   manualReasoning?: string;
   recommendedAction?: string;
@@ -112,10 +123,15 @@ type Draft = {
   postsTaskId: string;
   commentsTaskId: string;
   maxPosts: string;
+  authorTopLimit: string;
+  authorMinScore: string;
+  authorPostsPerAuthor: string;
   topPostLimit: string;
   minPostScoreForComments: string;
   keywordsText: string;
+  authorSeedProfilesText: string;
   postsInputJson: string;
+  authorPostsInputJson: string;
   commentsInputJson: string;
 };
 
@@ -124,16 +140,60 @@ type ManualPostDraft = {
   reasoning: string;
 };
 
+type Author = {
+  canonicalId?: string;
+  name?: string;
+  role?: string;
+  url?: string;
+  type?: string;
+  authorScore?: number;
+  recommendedAction?: string;
+  relevanceTags?: string[];
+  lowValueFlags?: string[];
+  powerSignals?: string[];
+  whyRelevant?: string;
+  keyThesis?: string;
+  rationale?: string;
+  confidence?: number;
+  samplePostCount?: number;
+  score?: {
+    author_score?: number;
+    recommended_action?: string;
+    relevance_tags?: string[];
+    low_value_flags?: string[];
+    power_signals?: string[];
+    why_relevant?: string;
+    key_thesis?: string;
+    rationale?: string;
+    confidence?: number;
+  };
+};
+
 const defaultDraft = (): Draft => ({
   name: "",
   openaiModel: "",
   postsTaskId: "",
   commentsTaskId: "",
   maxPosts: "25",
+  authorTopLimit: "8",
+  authorMinScore: "65",
+  authorPostsPerAuthor: "5",
   topPostLimit: "8",
   minPostScoreForComments: "55",
   keywordsText: "",
+  authorSeedProfilesText: [
+    "https://www.linkedin.com/in/mary-korlin-downs-614b67128/",
+    "https://www.linkedin.com/in/melissalim89/",
+    "https://www.linkedin.com/in/sabrina-compagno-6a410823/",
+    "https://www.linkedin.com/in/kovacspetra/",
+    "https://www.linkedin.com/in/renatomosca1/",
+    "https://www.linkedin.com/in/francis-pierrel-053b201/",
+    "https://www.linkedin.com/in/matteo-atti-uk/",
+    "https://www.linkedin.com/in/sandrine-crener/",
+    "https://www.linkedin.com/in/nina-skarra-idntfy/"
+  ].join("\n"),
   postsInputJson: "{}",
+  authorPostsInputJson: "{}",
   commentsInputJson: "{}"
 });
 
@@ -162,10 +222,15 @@ const toDraft = (config: TaskConfig): Draft => ({
   postsTaskId: config.postsTaskId || "",
   commentsTaskId: config.commentsTaskId || "",
   maxPosts: String(config.maxPosts ?? 25),
+  authorTopLimit: String(config.authorTopLimit ?? 8),
+  authorMinScore: String(config.authorMinScore ?? 65),
+  authorPostsPerAuthor: String(config.authorPostsPerAuthor ?? 5),
   topPostLimit: String(config.topPostLimit ?? 8),
   minPostScoreForComments: String(config.minPostScoreForComments ?? 55),
   keywordsText: (config.keywords || []).join("\n"),
+  authorSeedProfilesText: config.authorSeedProfilesText || "",
   postsInputJson: config.postsInputJson || "{}",
+  authorPostsInputJson: config.authorPostsInputJson || "{}",
   commentsInputJson: config.commentsInputJson || "{}"
 });
 
@@ -184,6 +249,7 @@ const formatStartedAt = (startedAt?: number): string => (startedAt ? new Date(st
 const formatPostedAt = (postedAt?: string): string => (postedAt ? new Date(postedAt).toLocaleDateString() : "No timestamp");
 
 const commentScoreValue = (comment: Comment): number => comment.commentScore || comment.score?.comment_score || 0;
+const authorScoreValue = (author: Author): number => author.authorScore ?? author.score?.author_score ?? 0;
 
 const manualScoreValue = (post: Post): string => (post.manualScore === undefined || post.manualScore === null ? "" : String(post.manualScore));
 
@@ -199,6 +265,7 @@ const App = () => {
   const [commentsSummary, setCommentsSummary] = useState<CommentsResponse | null>(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [runs, setRuns] = useState<Run[]>([]);
+  const [authors, setAuthors] = useState<Author[]>([]);
   const [message, setMessage] = useState({ text: "Loading...", tone: "muted" as "muted" | "error" });
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -242,6 +309,11 @@ const App = () => {
   const loadRuns = async () => {
     const nextRuns = await responseJson<Run[]>("/api/runs");
     setRuns(nextRuns);
+  };
+
+  const loadAuthors = async () => {
+    const nextAuthors = await responseJson<Author[]>("/api/authors?limit=100");
+    setAuthors(nextAuthors);
   };
 
   const loadPosts = async () => {
@@ -369,7 +441,7 @@ const App = () => {
   };
 
   const refreshAll = async () => {
-    await Promise.allSettled([loadHealth(), loadConfig(), loadConfigs(), loadRuns(), loadPosts()]);
+    await Promise.allSettled([loadHealth(), loadConfig(), loadConfigs(), loadRuns(), loadAuthors(), loadPosts()]);
   };
 
   useEffect(() => {
@@ -386,10 +458,15 @@ const App = () => {
       postsTaskId: draft.postsTaskId.trim(),
       commentsTaskId: draft.commentsTaskId.trim(),
       maxPosts: parseNumber(draft.maxPosts, 25),
+      authorTopLimit: parseNumber(draft.authorTopLimit, 8),
+      authorMinScore: parseNumber(draft.authorMinScore, 65),
+      authorPostsPerAuthor: parseNumber(draft.authorPostsPerAuthor, 5),
       topPostLimit: parseNumber(draft.topPostLimit, 8),
       minPostScoreForComments: parseNumber(draft.minPostScoreForComments, 55),
       keywords: parseKeywords(draft.keywordsText),
+      authorSeedProfilesText: draft.authorSeedProfilesText || "",
       postsInputJson: draft.postsInputJson || "{}",
+      authorPostsInputJson: draft.authorPostsInputJson || "{}",
       commentsInputJson: draft.commentsInputJson || "{}"
     };
 
@@ -483,6 +560,10 @@ const App = () => {
   const sortedComments = useMemo(() => {
     return [...comments].sort((a, b) => commentScoreValue(b) - commentScoreValue(a));
   }, [comments]);
+
+  const sortedAuthors = useMemo(() => {
+    return [...authors].sort((a, b) => authorScoreValue(b) - authorScoreValue(a));
+  }, [authors]);
 
   const selectedCommentScore = selectedComment?.score;
 
@@ -594,6 +675,34 @@ const App = () => {
               <input value={draft.maxPosts} onChange={(event) => setField("maxPosts", event.target.value)} type="number" min="1" />
             </label>
             <label>
+              Author top limit
+              <input
+                value={draft.authorTopLimit}
+                onChange={(event) => setField("authorTopLimit", event.target.value)}
+                type="number"
+                min="1"
+              />
+            </label>
+            <label>
+              Author min score
+              <input
+                value={draft.authorMinScore}
+                onChange={(event) => setField("authorMinScore", event.target.value)}
+                type="number"
+                min="0"
+                max="100"
+              />
+            </label>
+            <label>
+              Posts per author
+              <input
+                value={draft.authorPostsPerAuthor}
+                onChange={(event) => setField("authorPostsPerAuthor", event.target.value)}
+                type="number"
+                min="1"
+              />
+            </label>
+            <label>
               Top posts for comments
               <input
                 value={draft.topPostLimit}
@@ -617,10 +726,28 @@ const App = () => {
               <textarea value={draft.keywordsText} onChange={(event) => setField("keywordsText", event.target.value)} rows={6} />
             </label>
             <label className="wide">
+              Seed author profiles, one per line
+              <textarea
+                value={draft.authorSeedProfilesText}
+                onChange={(event) => setField("authorSeedProfilesText", event.target.value)}
+                rows={6}
+                spellCheck={false}
+              />
+            </label>
+            <label className="wide">
               Extra posts Apify input JSON
               <textarea
                 value={draft.postsInputJson}
                 onChange={(event) => setField("postsInputJson", event.target.value)}
+                rows={8}
+                spellCheck={false}
+              />
+            </label>
+            <label className="wide">
+              Extra author posts Apify input JSON
+              <textarea
+                value={draft.authorPostsInputJson}
+                onChange={(event) => setField("authorPostsInputJson", event.target.value)}
                 rows={8}
                 spellCheck={false}
               />
@@ -663,6 +790,10 @@ const App = () => {
                 <div className="meta">{formatStartedAt(run.startedAt)}</div>
                 <div>{run.message || ""}</div>
                 <div className="meta">
+                  authors {run.stats?.authorsScored || 0}/{run.stats?.authorsDiscovered || 0}, selected{" "}
+                  {run.stats?.authorsSelected || 0}, author posts {run.stats?.authorPostsFetched || 0}
+                </div>
+                <div className="meta">
                   posts {run.stats?.postsScored || 0}/{run.stats?.postsFetched || 0}, comments {run.stats?.commentsScored || 0}/
                   {run.stats?.commentsFetched || 0}
                 </div>
@@ -698,6 +829,63 @@ const App = () => {
               spellCheck={false}
             />
           </label>
+        </div>
+      </section>
+
+      <section className="panel authors-panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Discovery</p>
+            <h2>Authors</h2>
+          </div>
+          <button className="button ghost" onClick={() => void loadAuthors()}>
+            Refresh authors
+          </button>
+        </div>
+        <div className="author-summary">
+          <div>
+            <span className="detail-label">Ranked authors</span>
+            <strong>{sortedAuthors.length}</strong>
+          </div>
+          <div>
+            <span className="detail-label">Author threshold</span>
+            <strong>{draft.authorMinScore || "65"}</strong>
+          </div>
+          <div>
+            <span className="detail-label">Selected per run</span>
+            <strong>{draft.authorTopLimit || "8"}</strong>
+          </div>
+        </div>
+        <div className="authors">
+          {sortedAuthors.length ? (
+            sortedAuthors.map((author, index) => {
+              const tags = [...(author.relevanceTags || []), ...(author.powerSignals || [])].filter(Boolean).join(" / ");
+              return (
+                <article className="author-card" key={`${author.canonicalId || author.name || index}-${index}`}>
+                  <div className="author-card-head">
+                    <div>
+                      <p className="eyebrow">{author.recommendedAction || "candidate"}</p>
+                      <h3>{author.name || "Unknown author"}</h3>
+                      <div className="meta">{author.role || ""}</div>
+                    </div>
+                    <span className="score">{authorScoreValue(author)}</span>
+                  </div>
+                  <div className="meta">
+                    {author.samplePostCount || 0} sampled posts{author.url ? " · " : ""}
+                    {author.url ? (
+                      <a href={author.url} target="_blank" rel="noreferrer">
+                        Open LinkedIn profile
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="tags">{tags || "No tags yet"}</div>
+                  <p className="snippet">{author.whyRelevant || author.rationale || "No reasoning stored."}</p>
+                </article>
+              );
+            })
+          ) : (
+            <p className="meta">No authors have been scored yet. Run the pipeline to populate the ranked list.</p>
+          )}
         </div>
       </section>
 
@@ -795,8 +983,8 @@ const App = () => {
                 </p>
                 <div className="tags">{tags}</div>
                 <div className="meta">
-                  posted {formatPostedAt(post.postedAt)} · likes {post.engagement?.likes || 0}, LinkedIn comments{" "}
-                  {post.engagement?.comments || 0}
+                  posted {formatPostedAt(post.postedAt)} · author score {post.authorScore || 0} · likes{" "}
+                  {post.engagement?.likes || 0}, LinkedIn comments {post.engagement?.comments || 0}
                 </div>
                 <div className="manual-annotation">
                   <label>

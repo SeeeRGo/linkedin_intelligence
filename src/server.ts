@@ -10,7 +10,7 @@ import { failedScore, scoreRecord } from "./pipeline/openai.js";
 import { runScoringPipeline } from "./pipeline/runPipeline.js";
 import { formatDailyRunSchedule, shouldTriggerDailyRun, type RunSummary } from "./pipeline/scheduler.js";
 import { sendDailyDigest, sendTelegramMessage } from "./pipeline/telegram.js";
-import type { StoredPost, TaskConfigRecord } from "./pipeline/types.js";
+import type { StoredAuthor, StoredPost, TaskConfigRecord } from "./pipeline/types.js";
 
 type PostRecord = {
   canonicalId: string;
@@ -18,6 +18,7 @@ type PostRecord = {
   text: string;
   keyword: string;
   postedAt?: string;
+  authorCanonicalId?: string;
   author: Record<string, unknown>;
   engagement: {
     likes?: number;
@@ -36,6 +37,10 @@ type PostRecord = {
   manualScoreUpdatedAt?: number;
   rawSource: unknown;
   seenAt: number;
+};
+
+type AuthorRecord = StoredAuthor & {
+  score?: Record<string, unknown>;
 };
 
 type CommentRecord = {
@@ -100,18 +105,25 @@ const sanitizeConfig = (body: unknown): TaskConfigRecord => {
     postsTaskId: typeof record.postsTaskId === "string" ? record.postsTaskId.trim() : defaults.postsTaskId,
     commentsTaskId: typeof record.commentsTaskId === "string" ? record.commentsTaskId.trim() : defaults.commentsTaskId,
     keywords,
+    authorSeedProfilesText:
+      typeof record.authorSeedProfilesText === "string" ? record.authorSeedProfilesText : defaults.authorSeedProfilesText,
     maxPosts: Number(record.maxPosts) || defaults.maxPosts,
+    authorTopLimit: Number(record.authorTopLimit) || defaults.authorTopLimit,
+    authorMinScore: Number(record.authorMinScore) || defaults.authorMinScore,
+    authorPostsPerAuthor: Number(record.authorPostsPerAuthor) || defaults.authorPostsPerAuthor,
     topPostLimit: Number(record.topPostLimit) || defaults.topPostLimit,
     minPostScoreForComments: Number(record.minPostScoreForComments) || defaults.minPostScoreForComments,
     openaiModel: typeof record.openaiModel === "string" && record.openaiModel.trim() ? record.openaiModel.trim() : defaults.openaiModel,
     postsInputJson: typeof record.postsInputJson === "string" ? record.postsInputJson : defaults.postsInputJson,
+    authorPostsInputJson:
+      typeof record.authorPostsInputJson === "string" ? record.authorPostsInputJson : defaults.authorPostsInputJson,
     commentsInputJson: typeof record.commentsInputJson === "string" ? record.commentsInputJson : defaults.commentsInputJson
   };
 };
 
 const getActiveConfig = async (): Promise<TaskConfigRecord> => {
   const config = await convex.query<TaskConfigRecord | null>("taskConfigs.getActive");
-  return config ?? defaultTaskConfig();
+  return { ...defaultTaskConfig(), ...(config ?? {}) };
 };
 
 const getPostByCanonicalId = async (canonicalId: string): Promise<PostRecord | null> =>
@@ -294,6 +306,11 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
 
   if (url.pathname === "/api/posts" && req.method === "GET") {
     sendJson(res, 200, await convex.query("posts.list", { limit: Number(url.searchParams.get("limit")) || 100 }));
+    return;
+  }
+
+  if (url.pathname === "/api/authors" && req.method === "GET") {
+    sendJson(res, 200, await convex.query("authors.list", { limit: Number(url.searchParams.get("limit")) || 100 }));
     return;
   }
 

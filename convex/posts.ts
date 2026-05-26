@@ -27,11 +27,15 @@ export const upsertMany = mutation({
         text: String(post.text ?? ""),
         keyword: String(post.keyword ?? ""),
         postedAt: typeof post.posted_at === "string" ? post.posted_at : undefined,
+        authorCanonicalId: typeof post.author_canonical_id === "string" ? post.author_canonical_id : undefined,
         author: post.author ?? {},
         engagement: post.engagement ?? {},
         score,
         postScore: numberScore(score, "post_score"),
-        authorScore: numberScore(score, "author_score"),
+        authorScore:
+          typeof post.authorScore === "number" && Number.isFinite(post.authorScore)
+            ? post.authorScore
+            : numberScore(score, "author_score"),
         discussionValue: numberScore(score, "discussion_value"),
         recommendedAction: typeof score?.recommended_action === "string" ? score.recommended_action : undefined,
         relevanceTags: Array.isArray(score?.relevance_tags) ? (score.relevance_tags as string[]) : undefined,

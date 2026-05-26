@@ -15,16 +15,58 @@ const parseJsonObject = (value: string): Record<string, unknown> => {
   return parsed as Record<string, unknown>;
 };
 
-export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknown> => ({
-  search: config.keywords,
-  searches: config.keywords,
-  queries: config.keywords,
-  searchQueries: config.keywords,
-  postedLimit: "24h",
-  maxItems: config.maxPosts,
-  maxPosts: config.maxPosts,
-  ...parseJsonObject(config.postsInputJson)
-});
+const parseTextList = (value: string): string[] =>
+  value
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const listToStartUrls = (values: string[]): Array<{ url: string }> => values.map((url) => ({ url }));
+
+type AuthorLike = {
+  name: string;
+  url: string;
+  role: string;
+  type?: string;
+};
+
+export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknown> => {
+  const seedProfiles = parseTextList(config.authorSeedProfilesText);
+  return {
+    search: config.keywords,
+    searches: config.keywords,
+    queries: config.keywords,
+    searchQueries: config.keywords,
+    postedLimit: "24h",
+    maxItems: config.maxPosts,
+    maxPosts: config.maxPosts,
+    ...(seedProfiles.length ? { startUrls: listToStartUrls(seedProfiles), urls: seedProfiles } : {}),
+    ...parseJsonObject(config.postsInputJson)
+  };
+};
+
+export const buildAuthorPostsInput = (config: TaskConfigRecord, author: AuthorLike): Record<string, unknown> => {
+  const authorUrls = [author.url].filter(Boolean);
+  const authorNames = [author.name].filter(Boolean);
+  return {
+    search: authorNames,
+    searches: authorNames,
+    queries: authorNames,
+    searchQueries: authorNames,
+    postedLimit: "90d",
+    maxItems: config.authorPostsPerAuthor,
+    maxPosts: config.authorPostsPerAuthor,
+    ...(authorUrls.length
+      ? {
+          profileUrls: authorUrls,
+          authorUrls,
+          startUrls: listToStartUrls(authorUrls),
+          urls: authorUrls
+        }
+      : {}),
+    ...parseJsonObject(config.authorPostsInputJson)
+  };
+};
 
 export const buildCommentsInput = (config: TaskConfigRecord, post: StoredPost): Record<string, unknown> => ({
   post: post.url,

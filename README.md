@@ -10,7 +10,7 @@ The implementation is intentionally third-party-component first:
 - Airtable stores authors, posts, comments, and daily digest records.
 - Airtable writes are batched and throttled to stay within API rate limits.
 - Telegram receives the daily digest grouped by keyword as `keyword - links - score`.
-- A lightweight TypeScript Node.js web app can run the same Apify/OpenAI scoring flow into Convex.
+- A lightweight TypeScript Node.js web app can run the same Apify/OpenAI scoring flow into Convex, with an author-first discovery stage for fashion, luxury, beauty, and retail thought leaders.
 
 No automated posting, spam engagement, or mass outreach is implemented.
 
@@ -45,7 +45,7 @@ No automated posting, spam engagement, or mass outreach is implemented.
 
 ## Web App Setup
 
-The web app is a React-based local admin UI for configuring Apify task inputs, launching collection/scoring, and browsing posts stored in Convex.
+The web app is a React-based local admin UI for configuring Apify task inputs, launching collection/scoring, and browsing authors and posts stored in Convex.
 
 1. Install dependencies:
    ```bash
@@ -54,10 +54,10 @@ The web app is a React-based local admin UI for configuring Apify task inputs, l
 2. Copy `.env.example` to `.env.local` and fill:
    - `CONVEX_URL`
    - `APIFY_TOKEN`
-   - `APIFY_POSTS_TASK_ID`
-   - `APIFY_COMMENTS_TASK_ID`
-   - `OPENAI_API_KEY`
-   - `OPENAI_SCORING_MODEL`
+  - `APIFY_POSTS_TASK_ID`
+  - `APIFY_COMMENTS_TASK_ID`
+  - `OPENAI_API_KEY`
+  - `OPENAI_SCORING_MODEL`
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHAT_IDS` or `TELEGRAM_CHAT_ID` for one or more Telegram chat IDs
    - optionally `DAILY_RUN_TIME` and `DAILY_RUN_TIMEZONE` to enable automatic daily runs
@@ -85,7 +85,7 @@ If `DAILY_RUN_TIME` is set, the server checks once per minute and starts the pip
 
 The web pipeline uses two Apify tasks:
 
-- posts task: discovers LinkedIn posts by keywords and stores normalized post records.
+- posts task: discovers LinkedIn posts by keywords and seed author profiles, ranks authors first, and stores normalized post records.
 - comments task: runs only for top posts above `minPostScoreForComments` and with comments available.
 
 The admin form supports extra raw JSON for both Apify tasks. Those JSON objects are merged after the defaults, so task-specific fields can override `search`, `queries`, `urls`, `startUrls`, or limits if an actor expects a different input shape.

@@ -10,6 +10,7 @@ const assert = (condition, message) => {
 const workflow = readJson('n8n/workflows/daily_digest.workflow.json');
 const singlePostWorkflow = readJson('n8n/workflows/single_post_scoring.workflow.json');
 const scoreSchema = readJson('schemas/openai/discourse_score.schema.json');
+const authorScoreSchema = readJson('schemas/openai/author_score.schema.json');
 const airtableSchema = readJson('airtable/schema.json');
 const benchmark = readJson('n8n/fixtures/benchmark_input.json');
 const requiredFiles = [
@@ -17,8 +18,11 @@ const requiredFiles = [
   'src/pipeline/apify.ts',
   'src/pipeline/openai.ts',
   'src/pipeline/runPipeline.ts',
+  'prompts/author_scoring_system.md',
+  'schemas/openai/author_score.schema.json',
   'convex/schema.ts',
   'convex/taskConfigs.ts',
+  'convex/authors.ts',
   'convex/posts.ts',
   'convex/comments.ts',
   'convex/runs.ts',
@@ -66,6 +70,22 @@ const requiredScoreFields = [
 
 for (const field of requiredScoreFields) {
   assert(scoreSchema.required.includes(field), `Score schema is missing required field: ${field}`);
+}
+
+const requiredAuthorFields = [
+  'canonical_id',
+  'content_type',
+  'language',
+  'author_type',
+  'author_score',
+  'recommended_action',
+  'relevance_tags',
+  'low_value_flags',
+  'power_signals'
+];
+
+for (const field of requiredAuthorFields) {
+  assert(authorScoreSchema.required.includes(field), `Author score schema is missing required field: ${field}`);
 }
 
 const tableNames = new Set(airtableSchema.tables.map((table) => table.name));
