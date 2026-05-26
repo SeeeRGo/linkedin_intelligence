@@ -51,6 +51,7 @@ type Post = {
   keyword?: string;
   text?: string;
   url?: string;
+  postedAt?: string;
   postScore?: number;
   manualScore?: number;
   manualReasoning?: string;
@@ -180,6 +181,7 @@ const parseNumber = (value: string, fallback: number): number => {
 };
 
 const formatStartedAt = (startedAt?: number): string => (startedAt ? new Date(startedAt).toLocaleString() : "");
+const formatPostedAt = (postedAt?: string): string => (postedAt ? new Date(postedAt).toLocaleDateString() : "No timestamp");
 
 const commentScoreValue = (comment: Comment): number => comment.commentScore || comment.score?.comment_score || 0;
 
@@ -207,6 +209,9 @@ const App = () => {
   const [savingManualPostId, setSavingManualPostId] = useState<string | null>(null);
   const [postFilter, setPostFilter] = useState("");
   const [scoreFilter, setScoreFilter] = useState("0");
+  const [postedFrom, setPostedFrom] = useState("");
+  const [postedTo, setPostedTo] = useState("");
+  const [selectedRelevanceTags, setSelectedRelevanceTags] = useState<string[]>([]);
   const commentsPanelRef = useRef<HTMLElement | null>(null);
 
   const setField = <K extends keyof Draft>(field: K, value: Draft[K]) => {
@@ -430,8 +435,25 @@ const App = () => {
     }
   };
 
+  const availableRelevanceTags = useMemo(() => {
+    return [...new Set(posts.flatMap((post) => post.relevanceTags || []))].sort((a, b) => a.localeCompare(b));
+  }, [posts]);
+
+  const toggleRelevanceTag = (tag: string) => {
+    setSelectedRelevanceTags((current) =>
+      current.includes(tag) ? current.filter((entry) => entry !== tag) : [...current, tag]
+    );
+  };
+
+  const clearRelevanceTags = () => {
+    setSelectedRelevanceTags([]);
+  };
+
   const filteredPosts = useMemo(() => {
     const minScore = Number(scoreFilter);
+    const search = postFilter.trim().toLowerCase();
+    const fromMs = postedFrom ? new Date(`${postedFrom}T00:00:00`).getTime() : null;
+    const toMs = postedTo ? new Date(`${postedTo}T23:59:59.999`).getTime() : null;
     const haystack = (post: Post) =>
       [post.keyword, post.text, post.author?.name, post.recommendedAction, ...(post.relevanceTags || [])]
         .filter(Boolean)
@@ -440,9 +462,23 @@ const App = () => {
 
     return posts
       .filter((post) => (post.postScore || 0) >= minScore)
-      .filter((post) => haystack(post).includes(postFilter.trim().toLowerCase()))
+      .filter((post) => {
+        if (!selectedRelevanceTags.length) return true;
+        const tags = post.relevanceTags || [];
+        return selectedRelevanceTags.some((tag) => tags.includes(tag));
+      })
+      .filter((post) => {
+        if (!fromMs && !toMs) return true;
+        if (!post.postedAt) return false;
+        const postedMs = new Date(post.postedAt).getTime();
+        if (!Number.isFinite(postedMs)) return false;
+        if (fromMs !== null && postedMs < fromMs) return false;
+        if (toMs !== null && postedMs > toMs) return false;
+        return true;
+      })
+      .filter((post) => haystack(post).includes(search))
       .sort((a, b) => (b.postScore || 0) - (a.postScore || 0));
-  }, [posts, postFilter, scoreFilter]);
+  }, [posts, postFilter, scoreFilter, postedFrom, postedTo, selectedRelevanceTags]);
 
   const sortedComments = useMemo(() => {
     return [...comments].sort((a, b) => commentScoreValue(b) - commentScoreValue(a));
@@ -687,6 +723,45 @@ const App = () => {
             <option value="55">Score 55+</option>
             <option value="70">Score 70+</option>
           </select>
+          <label>
+            Posted from
+            <input type="date" value={postedFrom} onChange={(event) => setPostedFrom(event.target.value)} />
+          </label>
+          <label>
+            Posted to
+            <input type="date" value={postedTo} onChange={(event) => setPostedTo(event.target.value)} />
+          </label>
+        </div>
+        <div className="tag-filter-row">
+          <div className="tag-filter-header">
+            <span className="detail-label">Relevance tags</span>
+            <p className="meta">
+              {selectedRelevanceTags.length
+                ? "Showing posts that match any selected tag."
+                : "Select one or more tags to narrow the feed."}
+            </p>
+          </div>
+          <div className="tag-filter-chips">
+            {availableRelevanceTags.length ? (
+              availableRelevanceTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={`filter-chip${selectedRelevanceTags.includes(tag) ? " active" : ""}`}
+                  onClick={() => toggleRelevanceTag(tag)}
+                >
+                  {tag}
+                </button>
+              ))
+            ) : (
+              <p className="meta">No relevance tags available yet.</p>
+            )}
+          </div>
+          <div className="tag-filter-actions">
+            <button className="button ghost" onClick={clearRelevanceTags} disabled={!selectedRelevanceTags.length}>
+              Clear tags
+            </button>
+          </div>
         </div>
         <div className="posts">
           {filteredPosts.map((post, index) => {
@@ -720,7 +795,8 @@ const App = () => {
                 </p>
                 <div className="tags">{tags}</div>
                 <div className="meta">
-                  likes {post.engagement?.likes || 0}, LinkedIn comments {post.engagement?.comments || 0}
+                  posted {formatPostedAt(post.postedAt)} · likes {post.engagement?.likes || 0}, LinkedIn comments{" "}
+                  {post.engagement?.comments || 0}
                 </div>
                 <div className="manual-annotation">
                   <label>

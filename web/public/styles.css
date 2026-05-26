@@ -240,9 +240,72 @@ select:focus {
 
 .post-toolbar {
   display: grid;
-  grid-template-columns: 1fr 12rem;
+  grid-template-columns: minmax(0, 1fr) 12rem 11rem 11rem;
   gap: 1rem;
   margin-bottom: 1rem;
+  align-items: end;
+}
+
+.post-toolbar label {
+  min-width: 0;
+}
+
+.post-toolbar input,
+.post-toolbar select {
+  min-width: 0;
+}
+
+.tag-filter-row {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1.1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(222, 213, 196, 0.85);
+  border-radius: 20px;
+  background: rgba(255, 250, 240, 0.72);
+}
+
+.tag-filter-header {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-chip {
+  border: 1px solid rgba(222, 213, 196, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 250, 240, 0.95);
+  color: var(--ink);
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.filter-chip:hover {
+  transform: translateY(-1px);
+}
+
+.filter-chip.active {
+  border-color: var(--green);
+  color: #fff;
+  background: var(--green);
+}
+
+.tag-filter-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .posts {
@@ -488,6 +551,10 @@ select:focus {
   .post-toolbar,
   .config-actions {
     grid-template-columns: 1fr;
+  }
+
+  .tag-filter-actions {
+    justify-content: flex-start;
   }
 
   .score-stack,
