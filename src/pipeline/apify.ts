@@ -65,10 +65,14 @@ export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknow
   const keywords = config.keywords.length ? config.keywords : defaultDiscoveryKeywords;
   const overrides = parseJsonObject(config.postsInputJson);
   const input: Record<string, unknown> = {
+    query: keywords.join(" "),
+    searchQuery: keywords.join(" "),
     search: keywords,
     searches: keywords,
+    queryKeywords: keywords,
     queries: keywords,
     searchQueries: keywords,
+    keywords,
     maxItems: config.maxPosts,
     maxPosts: config.maxPosts
   };

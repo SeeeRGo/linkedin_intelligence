@@ -90,8 +90,15 @@ export const normalizePostRecords = (items: unknown[]): NormalizedPost[] => {
   return items
     .map(unwrapApifyItem)
     .filter((item) => {
-      const hasPostShape = stringValue(item.type) === "post" || item.content || item.linkedinUrl || item.shareLinkedinUrl;
-      return Boolean(hasPostShape && (item.content || item.article || item.job || item.repost));
+      const hasPostShape =
+        stringValue(item.type) === "post" ||
+        item.content ||
+        item.text ||
+        item.caption ||
+        item.body ||
+        item.linkedinUrl ||
+        item.shareLinkedinUrl;
+      return Boolean(hasPostShape && (item.content || item.text || item.caption || item.body || item.article || item.job || item.repost));
     })
     .map((item) => {
       const query = recordOf(item.query);
@@ -103,13 +110,18 @@ export const normalizePostRecords = (items: unknown[]): NormalizedPost[] => {
       const url =
         stringValue(item.linkedinUrl) ||
         stringValue(item.shareLinkedinUrl) ||
-        stringValue(recordOf(item.socialContent).shareUrl);
+        stringValue(recordOf(item.socialContent).shareUrl) ||
+        stringValue(item.url);
       const text =
         stringValue(item.content) ||
+        stringValue(item.text) ||
+        stringValue(item.caption) ||
+        stringValue(item.body) ||
         stringValue(article.description) ||
         stringValue(article.title) ||
         stringValue(job.title) ||
-        stringValue(repost.content);
+        stringValue(repost.content) ||
+        stringValue(repost.text);
 
       const post: NormalizedPost = {
         canonical_id: postCanonicalId(item),
