@@ -201,7 +201,7 @@ const defaultDraft = (): Draft => ({
   authorPostsPerAuthor: "5",
   topPostLimit: "8",
   minPostScoreForComments: "55",
-  keywordsText: "",
+  keywordsText: pageMode === "post-first" ? postFirstKeywordSeed.join("\n") : "",
   postsInputJson: "{}",
   authorPostsInputJson: "{}",
   commentsInputJson: "{}"
@@ -266,6 +266,20 @@ const authorScoreValue = (author: Author): number => author.authorScore ?? autho
 
 const manualScoreValue = (post: Post): string => (post.manualScore === undefined || post.manualScore === null ? "" : String(post.manualScore));
 const pageMode = window.location.pathname.startsWith("/post-first") ? "post-first" : "author-first";
+const postFirstKeywordSeed = [
+  "fashion retail",
+  "luxury retail",
+  "merchandising",
+  "assortment planning",
+  "clienteling",
+  "customer experience",
+  "returns",
+  "fashion tech",
+  "retail transformation",
+  "inventory strategy",
+  "AI in fashion",
+  "brand strategy"
+];
 
 const App = () => {
   const [health, setHealth] = useState<Health>({});

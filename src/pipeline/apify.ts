@@ -46,13 +46,29 @@ type AuthorLike = {
   type?: string;
 };
 
+const defaultDiscoveryKeywords = [
+  "fashion retail",
+  "luxury retail",
+  "merchandising",
+  "assortment planning",
+  "clienteling",
+  "customer experience",
+  "returns",
+  "fashion tech",
+  "retail transformation",
+  "inventory strategy",
+  "AI in fashion",
+  "brand strategy"
+];
+
 export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknown> => {
+  const keywords = config.keywords.length ? config.keywords : defaultDiscoveryKeywords;
   const overrides = parseJsonObject(config.postsInputJson);
   const input: Record<string, unknown> = {
-    search: config.keywords,
-    searches: config.keywords,
-    queries: config.keywords,
-    searchQueries: config.keywords,
+    search: keywords,
+    searches: keywords,
+    queries: keywords,
+    searchQueries: keywords,
     maxItems: config.maxPosts,
     maxPosts: config.maxPosts
   };
