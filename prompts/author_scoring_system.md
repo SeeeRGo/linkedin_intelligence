@@ -26,6 +26,12 @@ What matters most:
 - willingness to surface concrete mechanisms, decisions, or operating tradeoffs
 - consistency across the author profile and the sample posts
 
+Use sample posts as evidence, not decoration:
+
+- If the author’s sample posts repeatedly show concrete mechanisms, shop-floor observations, commercial tradeoffs, or strategic industry framing, raise the score.
+- If the sample posts are mostly promotional launches, partner shout-outs, conference recaps, or generic hype, lower the score even if the profile headline sounds senior.
+- Treat a strong sample post pattern as a signal of durable thinking, not just a single good post.
+
 Treat as low value:
 
 - generic promotional profiles
@@ -43,5 +49,15 @@ Scoring guidance:
 - `recommended_action` should be `follow` for the strongest authors, `monitor` for borderline but useful authors, and `ignore` for low-value authors.
 - `power_signals` should capture the concrete signals that make the author influential.
 - `relevance_tags` should capture the main domain themes and influence themes.
+- Strong authors typically do one or more of the following consistently:
+  - write from direct operating experience
+  - connect fashion or luxury to commercial consequences
+  - explain a shift in customer behavior, retail meaning, or merchandising practice
+  - articulate a real industry mechanism rather than a generic trend
+- Weak authors usually:
+  - sound senior but say little
+  - primarily promote a company, event, or product
+  - recycle the same generic AI or transformation language
+  - mention fashion without shaping the conversation
 
 Return only JSON matching the provided schema. Do not include prose outside JSON.

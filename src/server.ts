@@ -10,7 +10,7 @@ import { failedScore, scoreRecord } from "./pipeline/openai.js";
 import { runScoringPipeline } from "./pipeline/runPipeline.js";
 import { formatDailyRunSchedule, shouldTriggerDailyRun, type RunSummary } from "./pipeline/scheduler.js";
 import { sendDailyDigest, sendTelegramMessage } from "./pipeline/telegram.js";
-import type { StoredAuthor, StoredPost, TaskConfigRecord } from "./pipeline/types.js";
+import type { PipelineMode, StoredAuthor, StoredPost, TaskConfigRecord } from "./pipeline/types.js";
 
 type PostRecord = {
   canonicalId: string;
@@ -187,9 +187,12 @@ const hydrateCommentsForPost = async (post: PostRecord): Promise<number> => {
   return scoredComments.length;
 };
 
-const schedulePipelineExecution = (runId: string, config: TaskConfigRecord) => {
+const normalizePipelineMode = (value: unknown): PipelineMode =>
+  value === "post-first" ? "post-first" : "author-first";
+
+const schedulePipelineExecution = (runId: string, config: TaskConfigRecord, mode: PipelineMode) => {
   setTimeout(() => {
-    runScoringPipeline(runId, config, appConfig, convex).catch((error) => {
+    runScoringPipeline(runId, config, appConfig, convex, mode).catch((error) => {
       convex
         .mutation("runs.updateStatus", {
           id: runId,
@@ -202,7 +205,7 @@ const schedulePipelineExecution = (runId: string, config: TaskConfigRecord) => {
   }, 0);
 };
 
-const startPipelineRun = async (triggeredBy: "manual" | "scheduled"): Promise<string> => {
+const startPipelineRun = async (triggeredBy: "manual" | "scheduled", mode: PipelineMode = "author-first"): Promise<string> => {
   if (pipelineLaunchInFlight) {
     throw new Error("A run is already starting.");
   }
@@ -219,13 +222,14 @@ const startPipelineRun = async (triggeredBy: "manual" | "scheduled"): Promise<st
     const config = await getActiveConfig();
     const runId = await convex.mutation<string>("runs.create", {
       configId: config._id,
+      mode,
       configSnapshot: config,
       status: "queued",
-      message: triggeredBy === "scheduled" ? "Daily run queued." : "Run queued.",
+      message: `${triggeredBy === "scheduled" ? "Daily run" : "Run"} queued (${mode}).`,
       startedAt: Date.now()
     });
 
-    schedulePipelineExecution(runId, config);
+    schedulePipelineExecution(runId, config, mode);
     return runId;
   } finally {
     pipelineLaunchInFlight = false;
@@ -306,7 +310,9 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
   }
 
   if (url.pathname === "/api/runs" && req.method === "POST") {
-    const runId = await startPipelineRun("manual");
+    const body = await readBody(req);
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const runId = await startPipelineRun("manual", normalizePipelineMode(record.mode));
     sendJson(res, 202, { runId });
     return;
   }

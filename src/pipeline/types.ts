@@ -152,3 +152,5 @@ export type AuthorDiscoveryRecord = {
   raw_source: unknown;
   seen_at: string;
 };
+
+export type PipelineMode = "author-first" | "post-first";

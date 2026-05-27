@@ -44,6 +44,7 @@ type TaskConfigSummary = TaskConfig & {
 
 type Run = {
   status: string;
+  mode?: string;
   startedAt?: number;
   message?: string;
   stats?: {
@@ -264,6 +265,7 @@ const commentScoreValue = (comment: Comment): number => comment.commentScore || 
 const authorScoreValue = (author: Author): number => author.authorScore ?? author.score?.author_score ?? 0;
 
 const manualScoreValue = (post: Post): string => (post.manualScore === undefined || post.manualScore === null ? "" : String(post.manualScore));
+const pageMode = window.location.pathname.startsWith("/post-first") ? "post-first" : "author-first";
 
 const App = () => {
   const [health, setHealth] = useState<Health>({});
@@ -457,6 +459,8 @@ const App = () => {
   };
 
   useEffect(() => {
+    document.title =
+      pageMode === "post-first" ? "LinkedIn Intelligence | Post-first" : "LinkedIn Intelligence | Author-first";
     void refreshAll().catch((error) => {
       setMessage({ text: error instanceof Error ? error.message : "Failed to load app data.", tone: "error" });
     });
@@ -516,7 +520,7 @@ const App = () => {
       setMessage({ text: "Config saved.", tone: "muted" });
       const result = await responseJson<{ runId: string }>("/api/runs", {
         method: "POST",
-        body: "{}"
+        body: JSON.stringify({ mode: pageMode })
       });
       setMessage({ text: `Run started: ${result.runId}`, tone: "muted" });
       await loadRuns();
@@ -603,9 +607,23 @@ const App = () => {
     <>
       <header className="hero">
         <div>
-          <p className="eyebrow">LinkedIn discourse intelligence</p>
-          <h1>Apify scoring control panel</h1>
-          <p className="lede">Manage Apify task inputs, run OpenAI scoring, and inspect collected posts.</p>
+          <p className="eyebrow">
+            LinkedIn discourse intelligence · {pageMode === "post-first" ? "Post-first page" : "Author-first page"}
+          </p>
+          <h1>{pageMode === "post-first" ? "Post-first collection flow" : "Author-first collection flow"}</h1>
+          <p className="lede">
+            {pageMode === "post-first"
+              ? "Start from discovery posts, then score authors, fetch their posts, and keep the author-first scoring model compatible."
+              : "Discover fashion authors first, then fetch and score their posts with the author-first pipeline."}
+          </p>
+          <div className="page-links">
+            <a className={`page-link${pageMode === "author-first" ? " active" : ""}`} href="/">
+              Author-first page
+            </a>
+            <a className={`page-link${pageMode === "post-first" ? " active" : ""}`} href="/post-first">
+              Post-first page
+            </a>
+          </div>
         </div>
         <div className="status-card">
           <strong>Server health</strong>
@@ -630,7 +648,12 @@ const App = () => {
           <div className="panel-head">
             <div>
               <p className="eyebrow">Admin</p>
-              <h2>Task parameters</h2>
+              <h2>{pageMode === "post-first" ? "Legacy task parameters" : "Task parameters"}</h2>
+              <p className="meta">
+                {pageMode === "post-first"
+                  ? "This page runs the older discovery-post flow. Profile-search settings are preserved for compatibility but not used by this run mode."
+                  : "This page runs the author-first flow with profile search, author scoring, and post harvesting."}
+              </p>
             </div>
             <div className="config-actions">
               <label className="config-picker">
@@ -805,7 +828,11 @@ const App = () => {
 
           <div className="actions">
             <button className="button accent" onClick={() => void runPipeline()} disabled={isSaving || isRunning}>
-              {isRunning ? "Running..." : "Run collection and scoring"}
+              {isRunning
+                ? "Running..."
+                : pageMode === "post-first"
+                  ? "Run post-first pipeline"
+                  : "Run author-first pipeline"}
             </button>
             <span className="message" style={{ color: message.tone === "error" ? "var(--red)" : "var(--muted)" }}>
               {message.text}
@@ -828,6 +855,7 @@ const App = () => {
               <article className="run" key={`${run.status}-${run.startedAt || index}`}>
                 <strong>{run.status}</strong>
                 <div className="meta">{formatStartedAt(run.startedAt)}</div>
+                <div className="meta">{run.mode ? `${run.mode} flow` : "flow not recorded"}</div>
                 <div>{run.message || ""}</div>
                 <div className="meta">
                   profile queries {run.stats?.profileSearchQueries || 0}, authors {run.stats?.authorsScored || 0}/
@@ -876,8 +904,8 @@ const App = () => {
       <section className="panel authors-panel">
         <div className="panel-head">
           <div>
-            <p className="eyebrow">Discovery</p>
-            <h2>Authors</h2>
+            <p className="eyebrow">{pageMode === "post-first" ? "Ranking" : "Discovery"}</p>
+            <h2>{pageMode === "post-first" ? "Authors from posts" : "Authors"}</h2>
           </div>
           <button className="button ghost" onClick={() => void loadAuthors()}>
             Refresh authors
@@ -934,8 +962,8 @@ const App = () => {
       <section className="panel posts-panel">
         <div className="panel-head">
           <div>
-            <p className="eyebrow">Collected data</p>
-            <h2>Posts</h2>
+            <p className="eyebrow">{pageMode === "post-first" ? "Discovery" : "Collected data"}</p>
+            <h2>{pageMode === "post-first" ? "Discovery posts" : "Posts"}</h2>
           </div>
           <button className="button ghost" onClick={() => void loadPosts()}>
             Refresh posts

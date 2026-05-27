@@ -28,6 +28,7 @@ export default defineSchema({
 
   runs: defineTable({
     configId: v.optional(v.id("taskConfigs")),
+    mode: v.optional(v.string()),
     configSnapshot: v.any(),
     status: v.string(),
     message: v.optional(v.string()),

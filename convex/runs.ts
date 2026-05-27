@@ -4,6 +4,7 @@ import { v } from "convex/values";
 export const create = mutation({
   args: {
     configId: v.optional(v.string()),
+    mode: v.optional(v.string()),
     configSnapshot: v.any(),
     status: v.string(),
     message: v.optional(v.string()),
@@ -12,6 +13,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     return await ctx.db.insert("runs", {
       configId: args.configId as never,
+      mode: args.mode,
       configSnapshot: args.configSnapshot,
       status: args.status,
       message: args.message,

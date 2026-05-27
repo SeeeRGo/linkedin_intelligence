@@ -4,9 +4,18 @@ import type { ConvexGateway } from "./convex.js";
 import { normalizeAuthorDiscoveryRecords, normalizeCommentRecords, normalizePostRecords } from "./normalize.js";
 import { failedAuthorScore, failedScore, scoreAuthorRecord, scoreRecord } from "./openai.js";
 import { sendDailyDigest } from "./telegram.js";
-import type { AuthorDiscoveryRecord, AuthorScoreResult, StoredComment, StoredPost, TaskConfigRecord } from "./types.js";
+import type {
+  AuthorDiscoveryRecord,
+  AuthorScoreResult,
+  PipelineMode,
+  StoredComment,
+  StoredPost,
+  TaskConfigRecord
+} from "./types.js";
 
 type RunStats = {
+  discoveryPostsFetched?: number;
+  discoveryPostsScored?: number;
   profileSearchQueries: number;
   authorsDiscovered: number;
   authorsScored: number;
@@ -160,7 +169,7 @@ const buildCandidatesFromPosts = (posts: StoredPost[]): AuthorCandidate[] => {
       role: entry.author?.role || "",
       type: entry.author?.type,
       discovery_query: discoveryQuery,
-      sample_post_count: samplePosts.length,
+      sample_post_count: entry.posts.length,
       sample_posts: samplePosts,
       raw_source: {
         author: entry.author,
@@ -205,7 +214,7 @@ const discoveryQueriesForConfig = (taskConfig: TaskConfigRecord): string[] => {
   return queries.length ? queries : taskConfig.keywords;
 };
 
-export const runScoringPipeline = async (
+export const runAuthorFirstPipeline = async (
   runId: string,
   taskConfig: TaskConfigRecord,
   appConfig: AppConfig,
@@ -380,4 +389,181 @@ export const runScoringPipeline = async (
     finishedAt: Date.now(),
     stats
   });
+};
+
+export const runPostFirstPipeline = async (
+  runId: string,
+  taskConfig: TaskConfigRecord,
+  appConfig: AppConfig,
+  convex: ConvexGateway
+) => {
+  const stats: RunStats = {
+    profileSearchQueries: 0,
+    discoveryPostsFetched: 0,
+    discoveryPostsScored: 0,
+    authorsDiscovered: 0,
+    authorsScored: 0,
+    authorsSelected: 0,
+    authorPostsFetched: 0,
+    postsFetched: 0,
+    postsScored: 0,
+    commentsFetched: 0,
+    commentsScored: 0
+  };
+
+  await convex.mutation("runs.updateStatus", {
+    id: runId,
+    status: "running",
+    message: "Fetching discovery posts from Apify.",
+    stats
+  });
+
+  const discoveryItems = await runApifyTask(taskConfig.postsTaskId, buildPostsInput(taskConfig), {
+    token: appConfig.apifyToken,
+    timeoutSeconds: appConfig.apifyTimeoutSeconds
+  });
+
+  const discoveryPosts = normalizePostRecords(discoveryItems);
+  stats.discoveryPostsFetched = discoveryPosts.length;
+  stats.postsFetched = discoveryPosts.length;
+
+  const scoredDiscoveryPosts: StoredPost[] = [];
+  for (const post of discoveryPosts) {
+    scoredDiscoveryPosts.push(await scorePost(post, appConfig, taskConfig));
+    stats.discoveryPostsScored = scoredDiscoveryPosts.length;
+    stats.postsScored = scoredDiscoveryPosts.length;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Scored discovery posts ${stats.postsScored}/${stats.postsFetched}.`,
+      stats
+    });
+  }
+
+  const authorCandidates = buildCandidatesFromPosts(scoredDiscoveryPosts);
+  stats.authorsDiscovered = authorCandidates.length;
+
+  const scoredAuthors: ScoredAuthorCandidate[] = [];
+  for (const author of authorCandidates) {
+    scoredAuthors.push(await scoreAuthor(author, appConfig, taskConfig));
+    stats.authorsScored = scoredAuthors.length;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Scored ${stats.authorsScored}/${stats.authorsDiscovered} authors.`,
+      stats
+    });
+  }
+
+  await convex.mutation("authors.upsertMany", { authors: scoredAuthors });
+
+  const selectedAuthors = topAuthorsForPosts(scoredAuthors, taskConfig);
+  stats.authorsSelected = selectedAuthors.length;
+  await convex.mutation("runs.updateStatus", {
+    id: runId,
+    status: "running",
+    message: `Fetching posts for ${stats.authorsSelected} selected authors.`,
+    stats
+  });
+
+  const authorPostItems: unknown[] = [];
+  for (const author of selectedAuthors) {
+    const authorPosts = await runApifyTask(taskConfig.postsTaskId, buildAuthorPostsInput(taskConfig, author), {
+      token: appConfig.apifyToken,
+      timeoutSeconds: appConfig.apifyTimeoutSeconds
+    });
+    authorPostItems.push(...authorPosts);
+    stats.authorPostsFetched = authorPostItems.length;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Fetched posts for ${author.name}.`,
+      stats
+    });
+  }
+
+  const normalizedAuthorPosts = normalizePostRecords(authorPostItems);
+  stats.postsFetched += normalizedAuthorPosts.length;
+
+  const scoredAuthorPosts: StoredPost[] = [];
+  for (const post of normalizedAuthorPosts) {
+    scoredAuthorPosts.push(await scorePost(post, appConfig, taskConfig));
+    stats.postsScored += 1;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Scored author posts ${stats.postsScored}/${stats.postsFetched}.`,
+      stats
+    });
+  }
+
+  const authorScoreByCanonicalId = new Map<string, number>();
+  for (const author of scoredAuthors) {
+    authorScoreByCanonicalId.set(author.canonical_id, author.score.author_score);
+  }
+
+  const finalPosts = mergePostsByCanonicalId(
+    [...scoredAuthorPosts].map((post) => ({
+      ...post,
+      authorScore: post.author?.canonical_id ? authorScoreByCanonicalId.get(post.author.canonical_id) ?? post.authorScore : post.authorScore
+    }))
+  );
+
+  await convex.mutation("posts.upsertMany", { posts: finalPosts });
+
+  const topPosts = topPostsForComments(finalPosts, taskConfig);
+  const allCommentItems: unknown[] = [];
+
+  for (const post of topPosts) {
+    const commentItems = await runApifyTask(taskConfig.commentsTaskId, buildCommentsInput(taskConfig, post), {
+      token: appConfig.apifyToken,
+      timeoutSeconds: appConfig.apifyTimeoutSeconds
+    });
+    allCommentItems.push(...commentItems);
+    stats.commentsFetched = allCommentItems.length;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Fetched comments for ${post.url}.`,
+      stats
+    });
+  }
+
+  const normalizedComments = normalizeCommentRecords(allCommentItems, finalPosts);
+  const scoredComments: StoredComment[] = [];
+  for (const comment of normalizedComments) {
+    scoredComments.push(await scoreComment(comment, appConfig, taskConfig));
+    stats.commentsScored = scoredComments.length;
+  }
+
+  await convex.mutation("comments.upsertMany", { comments: scoredComments });
+
+  await convex.mutation("runs.updateStatus", {
+    id: runId,
+    status: "running",
+    message: "Sending Telegram daily digest.",
+    stats
+  });
+
+  const digestSent = await sendDailyDigest(finalPosts, scoredComments, appConfig);
+
+  await convex.mutation("runs.updateStatus", {
+    id: runId,
+    status: "completed",
+    message: digestSent ? "Pipeline completed. Daily digest sent." : "Pipeline completed. Telegram is not configured.",
+    finishedAt: Date.now(),
+    stats
+  });
+};
+
+export const runScoringPipeline = (
+  runId: string,
+  taskConfig: TaskConfigRecord,
+  appConfig: AppConfig,
+  convex: ConvexGateway,
+  mode: PipelineMode = "author-first"
+) => {
+  return mode === "post-first"
+    ? runPostFirstPipeline(runId, taskConfig, appConfig, convex)
+    : runAuthorFirstPipeline(runId, taskConfig, appConfig, convex);
 };

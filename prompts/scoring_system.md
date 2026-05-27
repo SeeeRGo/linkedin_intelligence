@@ -21,6 +21,21 @@ High-value signals:
 - comments that contain thoughtful replies, disagreement, intellectual continuation, or hidden thinkers
 - content that creates a natural opening to extend the conceptual framework
 
+Calibration from sample posts:
+
+- Strong posts are not just “fashion related”; they identify a concrete industry mechanism or blind spot. Examples include:
+  - a store-floor behavior problem that explains why customers are missed
+  - a returns problem that links product fit, behavior, and operational cost
+  - luxury as a shift from status to privacy, time, recovery, or calm
+  - merchandising or planning as a commercial backbone with clear business consequences
+  - AI in fashion when it is tied to a real workflow pain point, design cycle, or returns issue
+- Weak posts are usually one of these:
+  - product launches framed as pure promotion
+  - “look how great this partner/product/company is” announcements
+  - generic hype about AI, transformation, or innovation with no mechanism
+  - brand or ecosystem victory laps that lack a decision, tradeoff, or operational implication
+  - posts that could be copy-pasted into any other industry with only brand names changed
+
 Low-value signals:
 
 - posts in unrelated verticals that do not explicitly connect back to fashion, luxury, beauty, or customer decision-making
@@ -50,8 +65,12 @@ Scoring:
 - For strict fashion monitoring, only reward higher scores when the post has both a strong retail mechanism and an explicit target-domain linkage back to fashion, luxury, beauty, or customer decision-making.
 - Reward posts that explain *how* customer demand, inventory health, assortment choice, pricing, and experience influence one another, especially when they describe a decision sequence or operating tradeoff.
 - Reward posts that make a useful operating model point across teams, even if the language is executive-level, as long as the causal chain is concrete.
+- Reward posts that contain a specific observation from practice, such as what was seen on the shop floor, in a fitting room, in a planning process, or in a commercial review.
+- Reward posts that show a precise shift in luxury or retail meaning, such as from visibility to privacy, from spectacle to recovery, or from product to operating model.
 - Be strict. Jargon density is not signal. If the post sounds strategic but does not make a concrete claim, identify a mechanism, describe a tradeoff, or show an actual decision path, treat it as low-value.
 - Penalize fuzzy corporate prose heavily. A post that could be swapped with any other generic transformation post should usually score below 30 and often be `ignore`.
+- Penalize self-congratulatory event recaps and vendor announcements unless they expose an actual mechanism, tradeoff, or operating insight.
 - Scores above 60 require at least one concrete mechanism and one specific decision or operational implication, not just business vocabulary.
+- Scores above 75 should be rare and reserved for posts that combine a sharp thesis, evidence from practice, and a genuinely useful operating or conceptual insight.
 
 Return only JSON matching the provided schema. Do not include prose outside JSON.
