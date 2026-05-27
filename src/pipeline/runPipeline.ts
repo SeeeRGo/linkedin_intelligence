@@ -119,67 +119,6 @@ const buildCandidatesFromDiscovery = (records: AuthorDiscoveryRecord[]): AuthorC
   return [...deduped.values()];
 };
 
-const buildCandidatesFromPosts = (posts: StoredPost[]): AuthorCandidate[] => {
-  const authorGroups = new Map<
-    string,
-    {
-      author: StoredPost["author"];
-      posts: StoredPost[];
-    }
-  >();
-
-  for (const post of posts) {
-    const author = post.author;
-    const canonicalId = author?.canonical_id || post.author_canonical_id || author?.id || "";
-    if (!canonicalId) continue;
-
-    const existing = authorGroups.get(canonicalId);
-    if (existing) {
-      existing.posts.push(post);
-      continue;
-    }
-
-    authorGroups.set(canonicalId, {
-      author,
-      posts: [post]
-    });
-  }
-
-  return [...authorGroups.entries()].map(([canonicalId, entry]) => {
-    const discoveryQuery = [...new Set(entry.posts.map((post) => post.keyword).filter(Boolean))].join(", ");
-    const samplePosts = entry.posts
-      .slice()
-      .sort((a, b) => (b.postScore ?? 0) - (a.postScore ?? 0) || (b.posted_at || "").localeCompare(a.posted_at || ""))
-      .slice(0, 3)
-      .map((post) => ({
-        canonical_id: post.canonical_id,
-        url: post.url,
-        text: post.text,
-        keyword: post.keyword,
-        posted_at: post.posted_at,
-        post_score: post.postScore,
-        relevance_tags: post.score?.relevance_tags || post.relevanceTags || []
-      }));
-
-    return {
-      canonical_id: canonicalId,
-      content_type: "author",
-      name: entry.author?.name || "Unknown author",
-      url: entry.author?.url || "",
-      role: entry.author?.role || "",
-      type: entry.author?.type,
-      discovery_query: discoveryQuery,
-      sample_post_count: entry.posts.length,
-      sample_posts: samplePosts,
-      raw_source: {
-        author: entry.author,
-        sample_post_canonical_ids: samplePosts.map((sample) => sample.canonical_id)
-      },
-      seen_at: new Date().toISOString()
-    };
-  });
-};
-
 const topAuthorsForPosts = (authors: ScoredAuthorCandidate[], config: TaskConfigRecord): ScoredAuthorCandidate[] => {
   const ranked = authors
     .slice()
@@ -201,9 +140,9 @@ const mergePostsByCanonicalId = (posts: StoredPost[]): StoredPost[] => {
   return [...merged.values()].sort((a, b) => (b.postScore ?? 0) - (a.postScore ?? 0) || (b.seen_at || "").localeCompare(a.seen_at || ""));
 };
 
-const topPostsForComments = (posts: StoredPost[], config: TaskConfigRecord): StoredPost[] =>
+const topPostsForComments = (posts: StoredPost[], config: TaskConfigRecord, requireAuthorScore = true): StoredPost[] =>
   posts
-    .filter((post) => (post.authorScore ?? 0) >= config.authorMinScore)
+    .filter((post) => (requireAuthorScore ? (post.authorScore ?? 0) >= config.authorMinScore : true))
     .filter((post) => (post.score?.post_score ?? 0) >= config.minPostScoreForComments)
     .filter((post) => post.engagement.comments > 0)
     .sort((a, b) => (b.score?.post_score ?? 0) - (a.score?.post_score ?? 0))
@@ -241,16 +180,15 @@ export const runAuthorFirstPipeline = async (
     stats
   });
 
-  const discoveryTaskId = taskConfig.profileSearchTaskId || taskConfig.postsTaskId;
+  if (!taskConfig.profileSearchTaskId) {
+    throw new Error("Profile search task ID is required for the author-first flow.");
+  }
+
+  const discoveryTaskId = taskConfig.profileSearchTaskId;
   const authorDiscoveryRuns: Array<{ query: string; items: unknown[] }> = [];
 
   for (const query of discoveryQueries) {
-    const discoveryInput = taskConfig.profileSearchTaskId
-      ? buildProfileSearchInput(taskConfig, query)
-      : buildPostsInput({
-          ...taskConfig,
-          keywords: [query]
-        });
+    const discoveryInput = buildProfileSearchInput(taskConfig, query);
 
     const items = await runApifyTask(discoveryTaskId, discoveryInput, {
       token: appConfig.apifyToken,
@@ -265,16 +203,14 @@ export const runAuthorFirstPipeline = async (
     });
   }
 
-  const authorCandidates = taskConfig.profileSearchTaskId
-    ? buildCandidatesFromDiscovery(
-        authorDiscoveryRuns.flatMap(({ query, items }) =>
-          normalizeAuthorDiscoveryRecords(items, query).map((record) => ({
-            ...record,
-            discovery_query: query
-          }))
-        )
-      )
-    : buildCandidatesFromPosts(normalizePostRecords(authorDiscoveryRuns.flatMap((run) => run.items)));
+  const authorCandidates = buildCandidatesFromDiscovery(
+    authorDiscoveryRuns.flatMap(({ query, items }) =>
+      normalizeAuthorDiscoveryRecords(items, query).map((record) => ({
+        ...record,
+        discovery_query: query
+      }))
+    )
+  );
 
   stats.authorsDiscovered = authorCandidates.length;
 
@@ -440,78 +376,21 @@ export const runPostFirstPipeline = async (
     });
   }
 
-  const authorCandidates = buildCandidatesFromPosts(scoredDiscoveryPosts);
-  stats.authorsDiscovered = authorCandidates.length;
-
-  const scoredAuthors: ScoredAuthorCandidate[] = [];
-  for (const author of authorCandidates) {
-    scoredAuthors.push(await scoreAuthor(author, appConfig, taskConfig));
-    stats.authorsScored = scoredAuthors.length;
-    await convex.mutation("runs.updateStatus", {
-      id: runId,
-      status: "running",
-      message: `Scored ${stats.authorsScored}/${stats.authorsDiscovered} authors.`,
-      stats
-    });
-  }
-
-  await convex.mutation("authors.upsertMany", { authors: scoredAuthors });
-
-  const selectedAuthors = topAuthorsForPosts(scoredAuthors, taskConfig);
-  stats.authorsSelected = selectedAuthors.length;
+  stats.authorsDiscovered = 0;
+  stats.authorsScored = 0;
+  stats.authorsSelected = 0;
+  stats.authorPostsFetched = 0;
   await convex.mutation("runs.updateStatus", {
     id: runId,
     status: "running",
-    message: `Fetching posts for ${stats.authorsSelected} selected authors.`,
+    message: "Filtering discovery posts for comments.",
     stats
   });
 
-  const authorPostItems: unknown[] = [];
-  for (const author of selectedAuthors) {
-    const authorPosts = await runApifyTask(taskConfig.postsTaskId, buildAuthorPostsInput(taskConfig, author), {
-      token: appConfig.apifyToken,
-      timeoutSeconds: appConfig.apifyTimeoutSeconds
-    });
-    authorPostItems.push(...authorPosts);
-    stats.authorPostsFetched = authorPostItems.length;
-    await convex.mutation("runs.updateStatus", {
-      id: runId,
-      status: "running",
-      message: `Fetched posts for ${author.name}.`,
-      stats
-    });
-  }
-
-  const normalizedAuthorPosts = normalizePostRecords(authorPostItems);
-  stats.postsFetched += normalizedAuthorPosts.length;
-
-  const scoredAuthorPosts: StoredPost[] = [];
-  for (const post of normalizedAuthorPosts) {
-    scoredAuthorPosts.push(await scorePost(post, appConfig, taskConfig));
-    stats.postsScored += 1;
-    await convex.mutation("runs.updateStatus", {
-      id: runId,
-      status: "running",
-      message: `Scored author posts ${stats.postsScored}/${stats.postsFetched}.`,
-      stats
-    });
-  }
-
-  const authorScoreByCanonicalId = new Map<string, number>();
-  for (const author of scoredAuthors) {
-    authorScoreByCanonicalId.set(author.canonical_id, author.score.author_score);
-  }
-
-  const finalPosts = mergePostsByCanonicalId(
-    [...scoredAuthorPosts].map((post) => ({
-      ...post,
-      authorScore: post.author?.canonical_id ? authorScoreByCanonicalId.get(post.author.canonical_id) ?? post.authorScore : post.authorScore
-    }))
-  );
-
+  const finalPosts = mergePostsByCanonicalId(scoredDiscoveryPosts);
   await convex.mutation("posts.upsertMany", { posts: finalPosts });
 
-  const topPosts = topPostsForComments(finalPosts, taskConfig);
+  const topPosts = topPostsForComments(finalPosts, taskConfig, false);
   const allCommentItems: unknown[] = [];
 
   for (const post of topPosts) {
