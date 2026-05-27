@@ -23,6 +23,22 @@ const parseTextList = (value: string): string[] =>
 
 const listToStartUrls = (values: string[]): Array<{ url: string }> => values.map((url) => ({ url }));
 
+const allowedPostedLimits = new Set(["any", "1h", "24h", "week", "month", "3months", "6months", "year"]);
+
+const normalizePostedLimit = (value: unknown, fallback: string): string => {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const aliases: Record<string, string> = {
+    "1d": "24h",
+    "7d": "week",
+    "30d": "month",
+    "90d": "3months",
+    "180d": "6months",
+    "365d": "year"
+  };
+  const normalized = aliases[raw] || raw;
+  return allowedPostedLimits.has(normalized) ? normalized : fallback;
+};
+
 type AuthorLike = {
   name: string;
   url: string;
@@ -31,16 +47,18 @@ type AuthorLike = {
 };
 
 export const buildPostsInput = (config: TaskConfigRecord): Record<string, unknown> => {
-  return {
+  const overrides = parseJsonObject(config.postsInputJson);
+  const input: Record<string, unknown> = {
     search: config.keywords,
     searches: config.keywords,
     queries: config.keywords,
     searchQueries: config.keywords,
-    postedLimit: "24h",
     maxItems: config.maxPosts,
-    maxPosts: config.maxPosts,
-    ...parseJsonObject(config.postsInputJson)
+    maxPosts: config.maxPosts
   };
+  Object.assign(input, overrides);
+  input.postedLimit = normalizePostedLimit(overrides.postedLimit, "24h");
+  return input;
 };
 
 export const buildProfileSearchInput = (config: TaskConfigRecord, query: string): Record<string, unknown> => {
@@ -65,24 +83,26 @@ export const buildProfileSearchInput = (config: TaskConfigRecord, query: string)
 export const buildAuthorPostsInput = (config: TaskConfigRecord, author: AuthorLike): Record<string, unknown> => {
   const authorUrls = [author.url].filter(Boolean);
   const authorNames = [author.name].filter(Boolean);
-  return {
+  const overrides = parseJsonObject(config.authorPostsInputJson);
+  const input: Record<string, unknown> = {
     search: authorNames,
     searches: authorNames,
     queries: authorNames,
     searchQueries: authorNames,
-    postedLimit: "90d",
     maxItems: config.authorPostsPerAuthor,
-    maxPosts: config.authorPostsPerAuthor,
-    ...(authorUrls.length
-      ? {
-          profileUrls: authorUrls,
-          authorUrls,
-          startUrls: listToStartUrls(authorUrls),
-          urls: authorUrls
-        }
-      : {}),
-    ...parseJsonObject(config.authorPostsInputJson)
+    maxPosts: config.authorPostsPerAuthor
   };
+  if (authorUrls.length) {
+    Object.assign(input, {
+      profileUrls: authorUrls,
+      authorUrls,
+      startUrls: listToStartUrls(authorUrls),
+      urls: authorUrls
+    });
+  }
+  Object.assign(input, overrides);
+  input.postedLimit = normalizePostedLimit(overrides.postedLimit, "3months");
+  return input;
 };
 
 export const buildCommentsInput = (config: TaskConfigRecord, post: StoredPost): Record<string, unknown> => ({
