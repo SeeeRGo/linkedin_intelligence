@@ -190,6 +190,7 @@ export const leaderboard = query({
           canonicalId: post.canonicalId,
           url: post.url,
           text: post.text,
+          translatedText: post.translatedText,
           postedAt: post.postedAt,
           keyword: post.keyword,
           postScore: post.postScore,

@@ -22,6 +22,7 @@ type DigestBaseLike = {
   author?: DigestAuthorLike;
   url?: string;
   text?: string;
+  translatedText?: string;
   keyword?: string;
   score?: ScoreLike;
   postScore?: number;
@@ -99,6 +100,8 @@ const overallScore = (candidate: DigestPostLike | DigestCommentLike): number => 
 };
 
 const displayAuthorName = (candidate: DigestPostLike | DigestCommentLike): string => candidate.author?.name || "Unknown author";
+const displayText = (candidate: DigestPostLike | DigestCommentLike): string =>
+  candidate.translatedText || candidate.text || "";
 
 const buildKeywordLines = (posts: DigestPostLike[], maxLinksPerKeyword: number, minScore: number): string[] => {
   const relevantPosts = posts.filter((candidate) => overallScore(candidate) >= minScore && candidate.score?.recommended_action !== "ignore");
@@ -141,7 +144,7 @@ const buildCommentLines = (comments: DigestCommentLike[], maxCommentHighlights: 
       const parentLink = candidate.parent_post_url || candidate.parentPostUrl || candidate.url || "";
       const label = displayAuthorName(candidate);
       const link = parentLink ? `${label} (${parentLink})` : label;
-      return `${link} - ${score}/100${candidate.text ? `\n${candidate.text.slice(0, 220)}` : ""}`;
+      return `${link} - ${score}/100${displayText(candidate) ? `\n${displayText(candidate).slice(0, 220)}` : ""}`;
     });
 };
 
@@ -165,16 +168,16 @@ export const buildDailyDigestText = (posts: DigestPostLike[], comments: DigestCo
   const commentLines = buildCommentLines(comments, config.telegramMaxCommentHighlights, config.telegramMinScore);
   const themes = buildThemeLines(posts, comments, config.telegramMinScore);
 
-  let text = `Daily LinkedIn Discourse Digest\n${date}\n\n`;
-  text += `Relevant by keyword\n`;
-  text += keywordLines.length ? keywordLines.join("\n") : "No posts crossed the score threshold.";
-  text += `\n\nTop Comments\n`;
-  text += commentLines.length ? commentLines.join("\n\n") : "No comment highlights crossed the score threshold.";
-  text += `\n\nEmerging Themes\n`;
-  text += themes.length ? themes.map((theme) => `- ${theme}`).join("\n") : "No strong themes yet.";
+  let text = `Ежедневный дайджест LinkedIn-дискурса\n${date}\n\n`;
+  text += `Релевантное по ключевым словам\n`;
+  text += keywordLines.length ? keywordLines.join("\n") : "Нет постов, прошедших порог по рейтингу.";
+  text += `\n\nЛучшие комментарии\n`;
+  text += commentLines.length ? commentLines.join("\n\n") : "Нет комментариев, прошедших порог по рейтингу.";
+  text += `\n\nНовые темы\n`;
+  text += themes.length ? themes.map((theme) => `- ${theme}`).join("\n") : "Пока нет сильных тем.";
 
   if (text.length > 3900) {
-    text = `${text.slice(0, 3850)}\n\nDigest truncated in Telegram; full records are in the app.`;
+    text = `${text.slice(0, 3850)}\n\nДайджест обрезан в Telegram; полные записи доступны в приложении.`;
   }
 
   return text;

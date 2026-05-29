@@ -3,6 +3,7 @@ import { buildAuthorPostsInput, buildCommentsInput, buildPostsInput, buildProfil
 import type { ConvexGateway } from "./convex.js";
 import { normalizeAuthorDiscoveryRecords, normalizeCommentRecords, normalizePostRecords } from "./normalize.js";
 import { failedAuthorScore, failedScore, scoreAuthorRecord, scoreRecord } from "./openai.js";
+import { translateBatchToRussian } from "./translation.js";
 import { sendDailyDigest } from "./telegram.js";
 import type {
   AuthorDiscoveryRecord,
@@ -310,12 +311,15 @@ export const runAuthorFirstPipeline = async (
     authorScoreByCanonicalId.set(author.canonical_id, author.score.author_score);
   }
 
-  const finalPosts = mergePostsByCanonicalId(
+  const translatedAuthorPosts = await translateBatchToRussian(
     [...scoredAuthorPosts].map((post) => ({
       ...post,
       authorScore: post.author?.canonical_id ? authorScoreByCanonicalId.get(post.author.canonical_id) ?? post.authorScore : post.authorScore
-    }))
+    })),
+    appConfig,
+    taskConfig
   );
+  const finalPosts = mergePostsByCanonicalId(translatedAuthorPosts);
 
   await convex.mutation("posts.upsertMany", { posts: finalPosts });
 
@@ -344,7 +348,9 @@ export const runAuthorFirstPipeline = async (
     stats.commentsScored = scoredComments.length;
   }
 
-  await convex.mutation("comments.upsertMany", { comments: scoredComments });
+  const translatedComments = await translateBatchToRussian(scoredComments, appConfig, taskConfig);
+
+  await convex.mutation("comments.upsertMany", { comments: translatedComments });
 
   await convex.mutation("runs.updateStatus", {
     id: runId,
@@ -466,7 +472,8 @@ export const runPostFirstPipeline = async (
     });
   }
 
-  const finalPosts = mergePostsByCanonicalId([...scoredDiscoveryPosts, ...scoredMonthlyAuthorPosts]);
+  const translatedPosts = await translateBatchToRussian([...scoredDiscoveryPosts, ...scoredMonthlyAuthorPosts], appConfig, taskConfig);
+  const finalPosts = mergePostsByCanonicalId(translatedPosts);
   await convex.mutation("posts.upsertMany", { posts: finalPosts });
 
   if (missingAuthorSeeds.length) {
@@ -508,7 +515,9 @@ export const runPostFirstPipeline = async (
     stats.commentsScored = scoredComments.length;
   }
 
-  await convex.mutation("comments.upsertMany", { comments: scoredComments });
+  const translatedComments = await translateBatchToRussian(scoredComments, appConfig, taskConfig);
+
+  await convex.mutation("comments.upsertMany", { comments: translatedComments });
 
   await convex.mutation("runs.updateStatus", {
     id: runId,

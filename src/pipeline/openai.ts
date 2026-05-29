@@ -77,6 +77,13 @@ export const scoreAuthorRecord = async (record: unknown, options: OpenAIOptions)
     "schemas/openai/author_score.schema.json"
   );
 
+export type TranslationResult = {
+  translated_text: string;
+};
+
+export const translateToRussianRecord = async (record: unknown, options: OpenAIOptions): Promise<TranslationResult> =>
+  scoreWithSchema<TranslationResult>(record, options, "prompts/translation_system.md", "schemas/openai/translation.schema.json");
+
 export const failedScore = (record: { canonical_id: string; content_type: "post" | "comment" }, error: unknown): ScoreResult => ({
   canonical_id: record.canonical_id,
   content_type: record.content_type,
@@ -95,6 +102,10 @@ export const failedScore = (record: { canonical_id: string; content_type: "post"
   key_thesis: "",
   rationale: error instanceof Error ? `Scoring failed: ${error.message}` : "Scoring failed.",
   confidence: 0
+});
+
+export const failedTranslation = (text: string): TranslationResult => ({
+  translated_text: text
 });
 
 export const failedAuthorScore = (

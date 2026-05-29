@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["translated_text"],
+  "properties": {
+    "translated_text": {
+      "type": "string",
+      "description": "Natural Russian translation of the input text."
+    }
+  }
+}

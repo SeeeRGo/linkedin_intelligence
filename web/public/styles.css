@@ -227,6 +227,11 @@ select:focus {
   background: transparent;
 }
 
+.button.compact {
+  padding: 0.5rem 0.8rem;
+  font-size: 0.82rem;
+}
+
 .actions {
   display: flex;
   align-items: center;

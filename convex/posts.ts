@@ -25,6 +25,7 @@ export const upsertMany = mutation({
         canonicalId,
         url: String(post.url ?? ""),
         text: String(post.text ?? ""),
+        translatedText: typeof post.translated_text === "string" ? post.translated_text : undefined,
         keyword: String(post.keyword ?? ""),
         postedAt: typeof post.posted_at === "string" ? post.posted_at : undefined,
         authorCanonicalId: typeof post.author_canonical_id === "string" ? post.author_canonical_id : undefined,

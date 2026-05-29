@@ -64,6 +64,7 @@ type LeaderboardPost = {
   canonicalId?: string;
   keyword?: string;
   text?: string;
+  translatedText?: string;
   url?: string;
   postedAt?: string;
   postScore?: number;
@@ -107,6 +108,7 @@ type Post = {
   canonicalId?: string;
   keyword?: string;
   text?: string;
+  translatedText?: string;
   url?: string;
   postedAt?: string;
   authorCanonicalId?: string;
@@ -130,6 +132,7 @@ type Comment = {
   canonicalId?: string;
   parentPostCanonicalId?: string;
   text?: string;
+  translatedText?: string;
   createdAt?: string;
   commentScore?: number;
   score?: {
@@ -303,6 +306,9 @@ const parseNumber = (value: string, fallback: number): number => {
 
 const formatStartedAt = (startedAt?: number): string => (startedAt ? new Date(startedAt).toLocaleString() : "");
 const formatPostedAt = (postedAt?: string): string => (postedAt ? new Date(postedAt).toLocaleDateString() : "No timestamp");
+const displayTranslatedText = (value?: { translatedText?: string; text?: string }): string => value?.translatedText || value?.text || "";
+const textKey = (value?: { canonicalId?: string; url?: string }, fallback = ""): string =>
+  value?.canonicalId || value?.url || fallback;
 
 const commentScoreValue = (comment: Comment): number => comment.commentScore || comment.score?.comment_score || 0;
 const authorScoreValue = (author: Author): number => author.authorScore ?? author.score?.author_score ?? 0;
@@ -357,6 +363,8 @@ const App = () => {
   const [selectedRelevanceTags, setSelectedRelevanceTags] = useState<string[]>([]);
   const [leaderboardSort, setLeaderboardSort] = useState("leaderboardScore");
   const [leaderboardSearch, setLeaderboardSearch] = useState("");
+  const [showOriginalPosts, setShowOriginalPosts] = useState<Record<string, boolean>>({});
+  const [showOriginalComments, setShowOriginalComments] = useState<Record<string, boolean>>({});
   const commentsPanelRef = useRef<HTMLElement | null>(null);
 
   const setField = <K extends keyof Draft>(field: K, value: Draft[K]) => {
@@ -625,13 +633,27 @@ const App = () => {
     setSelectedRelevanceTags([]);
   };
 
+  const toggleOriginalPostText = (key: string) => {
+    setShowOriginalPosts((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  };
+
+  const toggleOriginalCommentText = (key: string) => {
+    setShowOriginalComments((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  };
+
   const filteredPosts = useMemo(() => {
     const minScore = Number(scoreFilter);
     const search = postFilter.trim().toLowerCase();
     const fromMs = postedFrom ? new Date(`${postedFrom}T00:00:00`).getTime() : null;
     const toMs = postedTo ? new Date(`${postedTo}T23:59:59.999`).getTime() : null;
     const haystack = (post: Post) =>
-      [post.keyword, post.text, post.author?.name, post.recommendedAction, ...(post.relevanceTags || [])]
+      [post.keyword, post.text, post.translatedText, post.author?.name, post.recommendedAction, ...(post.relevanceTags || [])]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -665,6 +687,8 @@ const App = () => {
   }, [authors]);
 
   const selectedCommentScore = selectedComment?.score;
+  const selectedCommentKey = textKey(selectedComment || undefined);
+  const selectedCommentShowOriginal = Boolean(showOriginalComments[selectedCommentKey]);
   const sortedLeaderboard = useMemo(() => {
     const search = leaderboardSearch.trim().toLowerCase();
     const filtered = leaderboard.filter((entry) => {
@@ -852,29 +876,46 @@ const App = () => {
 
                       <div className="leaderboard-posts">
                         {topPosts.length ? (
-                          topPosts.map((post) => (
-                            <article className="leaderboard-post" key={post.canonicalId || post.url}>
-                              <div className="leaderboard-post-top">
-                                <div>
-                                  <p className="eyebrow">{post.keyword || "monthly post"}</p>
-                                  <div className="meta">{post.postedAt ? new Date(post.postedAt).toLocaleDateString() : "No date"}</div>
+                          topPosts.map((post) => {
+                            const key = textKey(post);
+                            const showOriginal = Boolean(showOriginalPosts[key]);
+                            const postText = showOriginal ? post.text || "" : displayTranslatedText(post);
+
+                            return (
+                              <article className="leaderboard-post" key={post.canonicalId || post.url}>
+                                <div className="leaderboard-post-top">
+                                  <div>
+                                    <p className="eyebrow">{post.keyword || "monthly post"}</p>
+                                    <div className="meta">
+                                      {post.postedAt ? new Date(post.postedAt).toLocaleDateString() : "No date"}
+                                    </div>
+                                  </div>
+                                  <span className="score leaderboard-post-score">{post.postScore || 0}</span>
                                 </div>
-                                <span className="score leaderboard-post-score">{post.postScore || 0}</span>
-                              </div>
-                              <p className="snippet">{String(post.text || "").slice(0, 180)}</p>
-                              <div className="meta">
-                                likes {post.engagement?.likes || 0}, comments {post.engagement?.comments || 0}, shares{" "}
-                                {post.engagement?.shares || 0}
-                              </div>
-                              <div className="leaderboard-post-actions">
-                                {post.url ? (
-                                  <a href={post.url} target="_blank" rel="noreferrer">
-                                    Open LinkedIn post
-                                  </a>
-                                ) : null}
-                              </div>
-                            </article>
-                          ))
+                                <p className="snippet">{postText.slice(0, 180)}</p>
+                                <div className="leaderboard-post-actions">
+                                  <button
+                                    type="button"
+                                    className="button ghost compact"
+                                    onClick={() => toggleOriginalPostText(key)}
+                                  >
+                                    {showOriginal ? "Show Russian" : "Show original"}
+                                  </button>
+                                </div>
+                                <div className="meta">
+                                  likes {post.engagement?.likes || 0}, comments {post.engagement?.comments || 0}, shares{" "}
+                                  {post.engagement?.shares || 0}
+                                </div>
+                                <div className="leaderboard-post-actions">
+                                  {post.url ? (
+                                    <a href={post.url} target="_blank" rel="noreferrer">
+                                      Open LinkedIn post
+                                    </a>
+                                  ) : null}
+                                </div>
+                              </article>
+                            );
+                          })
                         ) : (
                           <p className="meta">No monthly posts captured yet.</p>
                         )}
@@ -1320,6 +1361,8 @@ const App = () => {
           {filteredPosts.map((post, index) => {
             const tags = [...(post.relevanceTags || []), post.recommendedAction].filter(Boolean).join(" / ");
             const manualDraft = getManualDraft(post);
+            const key = textKey(post, `${index}`);
+            const showOriginal = Boolean(showOriginalPosts[key]);
 
             return (
               <article className="post" key={`${post.url || post.keyword || index}-${index}`}>
@@ -1343,8 +1386,8 @@ const App = () => {
                   </div>
                 </div>
                 <p className="snippet">
-                  {String(post.text || "").slice(0, 520)}
-                  {String(post.text || "").length > 520 ? "..." : ""}
+                  {(showOriginal ? post.text : displayTranslatedText(post)).slice(0, 520)}
+                  {(showOriginal ? post.text : displayTranslatedText(post)).length > 520 ? "..." : ""}
                 </p>
                 <div className="tags">{tags}</div>
                 <div className="meta">
@@ -1373,6 +1416,9 @@ const App = () => {
                   </label>
                 </div>
                 <div className="post-actions">
+                  <button className="button ghost compact" onClick={() => toggleOriginalPostText(key)}>
+                    {showOriginal ? "Show Russian" : "Show original"}
+                  </button>
                   <button className="button ghost" onClick={() => void loadComments(post)}>
                     View comments
                   </button>
@@ -1443,7 +1489,17 @@ const App = () => {
                           </div>
                           <span className="score comment-score">{commentScoreValue(selectedComment)}</span>
                         </div>
-                        <p className="snippet">{selectedComment.text || ""}</p>
+                        <p className="snippet">
+                          {(selectedCommentShowOriginal ? selectedComment.text || "" : displayTranslatedText(selectedComment)).slice(0, 520)}
+                        </p>
+                        <div className="leaderboard-post-actions">
+                          <button
+                            className="button ghost compact"
+                            onClick={() => toggleOriginalCommentText(selectedCommentKey)}
+                          >
+                            {selectedCommentShowOriginal ? "Show Russian" : "Show original"}
+                          </button>
+                        </div>
                         <div className="comment-detail-grid">
                           <div>
                             <span className="detail-label">Recommended action</span>
@@ -1516,6 +1572,8 @@ const App = () => {
                       const score = comment.score;
                       const tags = [score?.recommended_action, ...(score?.relevance_tags || [])].filter(Boolean).join(" / ");
                       const isSelected = selectedComment?.canonicalId === comment.canonicalId;
+                      const key = textKey(comment, `${index}`);
+                      const showOriginal = Boolean(showOriginalComments[key]);
 
                       return (
                         <article
@@ -1529,11 +1587,14 @@ const App = () => {
                             </div>
                             <span className="score comment-score">{commentScoreValue(comment)}</span>
                           </div>
-                          <p className="snippet">{comment.text || ""}</p>
+                          <p className="snippet">{(showOriginal ? comment.text : displayTranslatedText(comment)).slice(0, 360)}</p>
                           <div className="meta">
                             {tags || "No score tags"} · {comment.createdAt || "No timestamp"}
                           </div>
                           <div className="comment-actions">
+                            <button className="button ghost compact" onClick={() => toggleOriginalCommentText(key)}>
+                              {showOriginal ? "Show Russian" : "Show original"}
+                            </button>
                             <button className="button ghost" onClick={() => setSelectedComment(comment)}>
                               Inspect scoring
                             </button>

@@ -32,6 +32,7 @@ export const upsertMany = mutation({
         parentPostUrl: String(comment.parent_post_url ?? ""),
         url: String(comment.url ?? ""),
         text: String(comment.text ?? ""),
+        translatedText: typeof comment.translated_text === "string" ? comment.translated_text : undefined,
         keyword: String(comment.keyword ?? ""),
         createdAt: typeof comment.created_at === "string" ? comment.created_at : undefined,
         author: comment.author ?? {},

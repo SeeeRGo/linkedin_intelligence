@@ -70,6 +70,7 @@ export type NormalizedPost = {
   content_type: "post";
   url: string;
   text: string;
+  translated_text?: string;
   keyword: string;
   posted_at: string;
   author: NormalizedAuthor;
@@ -88,6 +89,7 @@ export type NormalizedComment = {
   content_type: "comment";
   url: string;
   text: string;
+  translated_text?: string;
   parent_post_canonical_id: string;
   parent_post_url: string;
   keyword: string;
