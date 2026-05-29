@@ -807,7 +807,7 @@ const App = () => {
               {sortedLeaderboard.length ? (
                 sortedLeaderboard.map((entry, index) => {
                   const tags = [...(entry.relevanceTags || [])].filter(Boolean).join(" / ");
-                  const topPosts = (entry.posts || []).slice(0, 4);
+                  const topPosts = (entry.posts || []).slice(0, 3);
 
                   return (
                     <article className="leaderboard-card" key={entry.canonicalId}>
@@ -861,7 +861,7 @@ const App = () => {
                                 </div>
                                 <span className="score leaderboard-post-score">{post.postScore || 0}</span>
                               </div>
-                              <p className="snippet">{String(post.text || "").slice(0, 240)}</p>
+                              <p className="snippet">{String(post.text || "").slice(0, 180)}</p>
                               <div className="meta">
                                 likes {post.engagement?.likes || 0}, comments {post.engagement?.comments || 0}, shares{" "}
                                 {post.engagement?.shares || 0}
