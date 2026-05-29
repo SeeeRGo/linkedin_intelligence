@@ -20,7 +20,7 @@ The target author is not a generic fashion account. Prioritize people who sit in
 
 What matters most:
 
-- strong fashion, luxury, beauty, retail, merchandising, or clienteling relevance
+- strong fashion retail, merchandising, buying, retail operations, or fashion-tech relevance
 - evidence of seniority, authority, or discourse influence
 - clear thinking depth rather than keyword density
 - willingness to surface concrete mechanisms, decisions, or operating tradeoffs
@@ -31,6 +31,7 @@ Use sample posts as evidence, not decoration:
 - If the author’s sample posts repeatedly show concrete mechanisms, shop-floor observations, commercial tradeoffs, or strategic industry framing, raise the score.
 - If the sample posts are mostly promotional launches, partner shout-outs, conference recaps, or generic hype, lower the score even if the profile headline sounds senior.
 - Treat a strong sample post pattern as a signal of durable thinking, not just a single good post.
+- Use engagement and posting cadence as secondary signals only. High engagement without topical relevance should not rescue a weak author.
 
 Treat as low value:
 
@@ -51,13 +52,14 @@ Scoring guidance:
 - `relevance_tags` should capture the main domain themes and influence themes.
 - Strong authors typically do one or more of the following consistently:
   - write from direct operating experience
-  - connect fashion or luxury to commercial consequences
-  - explain a shift in customer behavior, retail meaning, or merchandising practice
+  - connect fashion retail to commercial consequences
+  - explain a shift in customer behavior, retail meaning, merchandising practice, or buying logic
   - articulate a real industry mechanism rather than a generic trend
 - Weak authors usually:
   - sound senior but say little
   - primarily promote a company, event, or product
   - recycle the same generic AI or transformation language
   - mention fashion without shaping the conversation
+  - focus on marketing, advertising, or logistics unless those topics directly affect merchandising or retail execution
 
 Return only JSON matching the provided schema. Do not include prose outside JSON.

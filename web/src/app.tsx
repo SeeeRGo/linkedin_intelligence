@@ -60,6 +60,49 @@ type Run = {
   };
 };
 
+type LeaderboardPost = {
+  canonicalId?: string;
+  keyword?: string;
+  text?: string;
+  url?: string;
+  postedAt?: string;
+  postScore?: number;
+  authorScore?: number;
+  recommendedAction?: string;
+  relevanceTags?: string[];
+  engagement?: {
+    likes?: number;
+    comments?: number;
+    shares?: number;
+  };
+  author?: {
+    name?: string;
+    role?: string;
+  };
+};
+
+type LeaderboardEntry = {
+  canonicalId: string;
+  month?: string;
+  name: string;
+  url?: string;
+  role?: string;
+  type?: string;
+  authorScore?: number;
+  authorType?: string;
+  recommendedAction?: string;
+  relevanceTags?: string[];
+  leaderboardScore: number;
+  leaderboardPostCount: number;
+  leaderboardRelevantPostCount: number;
+  leaderboardRelevantPostRate: number;
+  leaderboardAveragePostScore: number;
+  leaderboardAverageEngagement: number;
+  leaderboardMaxPostScore: number;
+  leaderboardLastPostAt?: string;
+  posts?: LeaderboardPost[];
+};
+
 type Post = {
   canonicalId?: string;
   keyword?: string;
@@ -265,7 +308,11 @@ const commentScoreValue = (comment: Comment): number => comment.commentScore || 
 const authorScoreValue = (author: Author): number => author.authorScore ?? author.score?.author_score ?? 0;
 
 const manualScoreValue = (post: Post): string => (post.manualScore === undefined || post.manualScore === null ? "" : String(post.manualScore));
-const pageMode = window.location.pathname.startsWith("/post-first") ? "post-first" : "author-first";
+const pageMode = window.location.pathname.startsWith("/leaderboard")
+  ? "leaderboard"
+  : window.location.pathname.startsWith("/post-first")
+    ? "post-first"
+    : "author-first";
 const postFirstKeywordSeed = [
   "fashion retail",
   "luxury retail",
@@ -294,6 +341,7 @@ const App = () => {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [runs, setRuns] = useState<Run[]>([]);
   const [authors, setAuthors] = useState<Author[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [message, setMessage] = useState({ text: "Loading...", tone: "muted" as "muted" | "error" });
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -303,10 +351,12 @@ const App = () => {
   const [manualPostDrafts, setManualPostDrafts] = useState<Record<string, ManualPostDraft>>({});
   const [savingManualPostId, setSavingManualPostId] = useState<string | null>(null);
   const [postFilter, setPostFilter] = useState("");
-  const [scoreFilter, setScoreFilter] = useState("0");
+  const [scoreFilter, setScoreFilter] = useState(defaultDraft().minPostScoreForComments);
   const [postedFrom, setPostedFrom] = useState("");
   const [postedTo, setPostedTo] = useState("");
   const [selectedRelevanceTags, setSelectedRelevanceTags] = useState<string[]>([]);
+  const [leaderboardSort, setLeaderboardSort] = useState("leaderboardScore");
+  const [leaderboardSearch, setLeaderboardSearch] = useState("");
   const commentsPanelRef = useRef<HTMLElement | null>(null);
 
   const setField = <K extends keyof Draft>(field: K, value: Draft[K]) => {
@@ -320,7 +370,9 @@ const App = () => {
 
   const loadConfig = async () => {
     const config = await responseJson<TaskConfig>("/api/config");
-    setDraft(toDraft(config));
+    const nextDraft = toDraft(config);
+    setDraft(nextDraft);
+    setScoreFilter(nextDraft.minPostScoreForComments);
     setSelectedConfigId(config._id || "");
   };
 
@@ -347,6 +399,11 @@ const App = () => {
   const loadPosts = async () => {
     const nextPosts = await responseJson<Post[]>("/api/posts?limit=200");
     setPosts(nextPosts);
+  };
+
+  const loadLeaderboard = async () => {
+    const nextLeaderboard = await responseJson<LeaderboardEntry[]>("/api/leaderboard?limit=50");
+    setLeaderboard(nextLeaderboard);
   };
 
   const setManualDraft = (postId: string, patch: Partial<ManualPostDraft>) => {
@@ -469,12 +526,21 @@ const App = () => {
   };
 
   const refreshAll = async () => {
+    if (pageMode === "leaderboard") {
+      await Promise.allSettled([loadHealth(), loadLeaderboard()]);
+      return;
+    }
+
     await Promise.allSettled([loadHealth(), loadConfig(), loadConfigs(), loadRuns(), loadAuthors(), loadPosts()]);
   };
 
   useEffect(() => {
     document.title =
-      pageMode === "post-first" ? "LinkedIn Intelligence | Post-first" : "LinkedIn Intelligence | Author-first";
+      pageMode === "post-first"
+        ? "LinkedIn Intelligence | Post-first"
+        : pageMode === "leaderboard"
+          ? "LinkedIn Intelligence | Monthly leaderboard"
+          : "LinkedIn Intelligence | Author-first";
     void refreshAll().catch((error) => {
       setMessage({ text: error instanceof Error ? error.message : "Failed to load app data.", tone: "error" });
     });
@@ -599,6 +665,43 @@ const App = () => {
   }, [authors]);
 
   const selectedCommentScore = selectedComment?.score;
+  const sortedLeaderboard = useMemo(() => {
+    const search = leaderboardSearch.trim().toLowerCase();
+    const filtered = leaderboard.filter((entry) => {
+      if (!search) return true;
+      return [entry.name, entry.role, entry.url, ...(entry.relevanceTags || [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    });
+
+    const comparator = (a: LeaderboardEntry, b: LeaderboardEntry) => {
+      if (leaderboardSort === "relevanceRate") return b.leaderboardRelevantPostRate - a.leaderboardRelevantPostRate;
+      if (leaderboardSort === "averageScore") return b.leaderboardAveragePostScore - a.leaderboardAveragePostScore;
+      if (leaderboardSort === "engagement") return b.leaderboardAverageEngagement - a.leaderboardAverageEngagement;
+      if (leaderboardSort === "activity") return b.leaderboardPostCount - a.leaderboardPostCount;
+      if (leaderboardSort === "recent") {
+        const aTime = a.leaderboardLastPostAt ? Date.parse(a.leaderboardLastPostAt) : 0;
+        const bTime = b.leaderboardLastPostAt ? Date.parse(b.leaderboardLastPostAt) : 0;
+        return bTime - aTime;
+      }
+      return b.leaderboardScore - a.leaderboardScore;
+    };
+
+    return filtered.slice().sort(comparator);
+  }, [leaderboard, leaderboardSearch, leaderboardSort]);
+
+  const leaderboardSummary = useMemo(() => {
+    const totalPosts = sortedLeaderboard.reduce((sum, entry) => sum + (entry.leaderboardPostCount || 0), 0);
+    const relevantPosts = sortedLeaderboard.reduce((sum, entry) => sum + (entry.leaderboardRelevantPostCount || 0), 0);
+    const relevantRate = totalPosts ? (relevantPosts / totalPosts) * 100 : 0;
+    return {
+      authors: sortedLeaderboard.length,
+      posts: totalPosts,
+      relevantRate: Number(relevantRate.toFixed(1))
+    };
+  }, [sortedLeaderboard]);
 
   const loadSelectedConfig = () => {
     const config = configs.find((entry) => entry._id === selectedConfigId);
@@ -607,15 +710,187 @@ const App = () => {
       return;
     }
 
-    setDraft(toDraft(config));
+    const nextDraft = toDraft(config);
+    setDraft(nextDraft);
+    setScoreFilter(nextDraft.minPostScoreForComments);
     setMessage({ text: `Loaded ${config.name}.`, tone: "muted" });
   };
 
   const createNewConfig = () => {
-    setDraft(defaultDraft());
+    const nextDraft = defaultDraft();
+    setDraft(nextDraft);
+    setScoreFilter(nextDraft.minPostScoreForComments);
     setSelectedConfigId("");
     setMessage({ text: "New config draft started.", tone: "muted" });
   };
+
+  if (pageMode === "leaderboard") {
+    return (
+      <>
+        <header className="hero">
+          <div>
+            <p className="eyebrow">Monthly leaderboard · {leaderboard[0]?.month || new Date().toISOString().slice(0, 7)}</p>
+            <h1>Relevant author gallery</h1>
+            <p className="lede">
+              Monthly ranking of fashion merchandising, buying, retail, and fashion-tech voices. Marketing, advertising, and
+              logistics are excluded unless they directly affect the merchandising or retail decision chain.
+            </p>
+            <div className="page-links">
+              <a className="page-link" href="/">
+                Author-first page
+              </a>
+              <a className="page-link" href="/post-first">
+                Post-first page
+              </a>
+              <a className="page-link active" href="/leaderboard">
+                Monthly leaderboard
+              </a>
+            </div>
+          </div>
+          <div className="status-card">
+            <strong>Leaderboard status</strong>
+            <div>Convex: {health.convexConfigured ? "configured" : "missing"}</div>
+            <div>Authors: {leaderboardSummary.authors}</div>
+            <div>Monthly posts: {leaderboardSummary.posts}</div>
+            <div>Relevant rate: {leaderboardSummary.relevantRate}%</div>
+          </div>
+        </header>
+
+        <main className="leaderboard-layout">
+          <section className="panel leaderboard-panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Ranking</p>
+                <h2>Monthly leadership board</h2>
+                <p className="meta">
+                  Sorted by relevance, activity, engagement, and post quality. Each card shows the author’s top posts from the
+                  current month.
+                </p>
+              </div>
+              <button className="button ghost" onClick={() => void loadLeaderboard()}>
+                Refresh leaderboard
+              </button>
+            </div>
+
+            <div className="leaderboard-controls">
+              <input
+                value={leaderboardSearch}
+                onChange={(event) => setLeaderboardSearch(event.target.value)}
+                placeholder="Filter authors by name, role, tag..."
+              />
+              <select value={leaderboardSort} onChange={(event) => setLeaderboardSort(event.target.value)}>
+                <option value="leaderboardScore">Leaderboard score</option>
+                <option value="relevanceRate">% relevant posts</option>
+                <option value="averageScore">Average post score</option>
+                <option value="engagement">Average engagement</option>
+                <option value="activity">Monthly activity</option>
+                <option value="recent">Most recent activity</option>
+              </select>
+            </div>
+
+            <div className="leaderboard-summary">
+              <div>
+                <span className="detail-label">Ranked authors</span>
+                <strong>{leaderboardSummary.authors}</strong>
+              </div>
+              <div>
+                <span className="detail-label">Monthly posts</span>
+                <strong>{leaderboardSummary.posts}</strong>
+              </div>
+              <div>
+                <span className="detail-label">Relevant post rate</span>
+                <strong>{leaderboardSummary.relevantRate}%</strong>
+              </div>
+            </div>
+
+            <div className="leaderboard-grid">
+              {sortedLeaderboard.length ? (
+                sortedLeaderboard.map((entry, index) => {
+                  const tags = [...(entry.relevanceTags || [])].filter(Boolean).join(" / ");
+                  const topPosts = (entry.posts || []).slice(0, 4);
+
+                  return (
+                    <article className="leaderboard-card" key={entry.canonicalId}>
+                      <div className="leaderboard-card-head">
+                        <div className="leaderboard-rank">#{index + 1}</div>
+                        <div className="leaderboard-card-title">
+                          <p className="eyebrow">{entry.recommendedAction || "candidate"}</p>
+                          <h3>{entry.name}</h3>
+                          <div className="meta">{entry.role || "No role"}</div>
+                        </div>
+                        <div className="score leaderboard-score">{entry.leaderboardScore}</div>
+                      </div>
+
+                      <div className="leaderboard-stats">
+                        <div>
+                          <span className="detail-label">% relevant posts</span>
+                          <strong>{entry.leaderboardRelevantPostRate}%</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Avg post score</span>
+                          <strong>{entry.leaderboardAveragePostScore}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Avg engagement</span>
+                          <strong>{entry.leaderboardAverageEngagement}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Monthly posts</span>
+                          <strong>{entry.leaderboardPostCount}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Relevant posts</span>
+                          <strong>{entry.leaderboardRelevantPostCount}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Max post score</span>
+                          <strong>{entry.leaderboardMaxPostScore}</strong>
+                        </div>
+                      </div>
+
+                      <div className="tags">{tags || "No topical tags yet"}</div>
+
+                      <div className="leaderboard-posts">
+                        {topPosts.length ? (
+                          topPosts.map((post) => (
+                            <article className="leaderboard-post" key={post.canonicalId || post.url}>
+                              <div className="leaderboard-post-top">
+                                <div>
+                                  <p className="eyebrow">{post.keyword || "monthly post"}</p>
+                                  <div className="meta">{post.postedAt ? new Date(post.postedAt).toLocaleDateString() : "No date"}</div>
+                                </div>
+                                <span className="score leaderboard-post-score">{post.postScore || 0}</span>
+                              </div>
+                              <p className="snippet">{String(post.text || "").slice(0, 240)}</p>
+                              <div className="meta">
+                                likes {post.engagement?.likes || 0}, comments {post.engagement?.comments || 0}, shares{" "}
+                                {post.engagement?.shares || 0}
+                              </div>
+                              <div className="leaderboard-post-actions">
+                                {post.url ? (
+                                  <a href={post.url} target="_blank" rel="noreferrer">
+                                    Open LinkedIn post
+                                  </a>
+                                ) : null}
+                              </div>
+                            </article>
+                          ))
+                        ) : (
+                          <p className="meta">No monthly posts captured yet.</p>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="meta">No monthly leaderboard entries yet. Run the pipeline to populate it.</p>
+              )}
+            </div>
+          </section>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -636,6 +911,9 @@ const App = () => {
             </a>
             <a className={`page-link${pageMode === "post-first" ? " active" : ""}`} href="/post-first">
               Post-first page
+            </a>
+            <a className={`page-link${pageMode === "leaderboard" ? " active" : ""}`} href="/leaderboard">
+              Monthly leaderboard
             </a>
           </div>
         </div>
@@ -990,6 +1268,9 @@ const App = () => {
             placeholder="Filter by keyword, author, text..."
           />
           <select value={scoreFilter} onChange={(event) => setScoreFilter(event.target.value)}>
+            <option value={draft.minPostScoreForComments || "55"}>
+              Default score {draft.minPostScoreForComments || "55"}+
+            </option>
             <option value="0">All scores</option>
             <option value="40">Score 40+</option>
             <option value="55">Score 55+</option>

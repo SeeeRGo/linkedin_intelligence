@@ -10,7 +10,7 @@ The pipeline is:
 - OpenAI scores the posts and comments.
 - The web app stores and browses authors, posts, and comments in Convex.
 - Telegram receives the daily digest when configured.
-- The local UI has two routes: `/` for the author-first flow and `/post-first` for the restored post-first flow.
+- The local UI has three routes: `/` for the author-first flow, `/post-first` for the restored post-first flow, and `/leaderboard` for the monthly author gallery.
 
 There is no n8n dependency in the supported flow.
 
@@ -63,6 +63,7 @@ npm run build:web
 - The ranked author view shows the profile search query that produced each author, the author score, and the stored rationale.
 - The posts view shows author score, post score, and comment access from Convex.
 - The post-first page keeps the same data model but starts from discovery posts before scoring authors.
+- The monthly leaderboard page ranks authors by topic relevance, monthly activity, engagement, and average post quality, and shows their top posts for the month.
 
 ## Acceptance Checks
 

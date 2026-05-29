@@ -85,6 +85,7 @@ export default defineSchema({
     seenAt: v.number()
   })
     .index("by_canonical", ["canonicalId"])
+    .index("by_authorCanonicalId", ["authorCanonicalId"])
     .index("by_seenAt", ["seenAt"])
     .index("by_postScore", ["postScore"]),
 

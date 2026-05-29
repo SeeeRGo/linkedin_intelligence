@@ -121,7 +121,7 @@ export const buildAuthorPostsInput = (config: TaskConfigRecord, author: AuthorLi
     });
   }
   Object.assign(input, overrides);
-  input.postedLimit = normalizePostedLimit(overrides.postedLimit, "3months");
+  input.postedLimit = normalizePostedLimit(overrides.postedLimit, "month");
   return input;
 };
 

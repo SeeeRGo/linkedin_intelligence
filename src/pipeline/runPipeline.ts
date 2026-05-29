@@ -41,6 +41,16 @@ type AuthorCandidate = AuthorDiscoveryRecord & {
   }>;
 };
 
+type AuthorSeed = {
+  canonical_id: string;
+  name: string;
+  url: string;
+  role: string;
+  type?: string;
+  raw_source: unknown;
+  seen_at: string;
+};
+
 type ScoredAuthorCandidate = AuthorCandidate & {
   score: AuthorScoreResult;
 };
@@ -113,6 +123,33 @@ const buildCandidatesFromDiscovery = (records: AuthorDiscoveryRecord[]): AuthorC
       content_type: "author",
       sample_post_count: 0,
       sample_posts: []
+    });
+  }
+
+  return [...deduped.values()];
+};
+
+const buildAuthorSeedsFromPosts = (posts: StoredPost[]): AuthorSeed[] => {
+  const seenAt = new Date().toISOString();
+  const deduped = new Map<string, AuthorSeed>();
+
+  for (const post of posts) {
+    const author = post.author;
+    const canonicalId = author?.canonical_id || post.author_canonical_id || author?.id || "";
+    if (!canonicalId || deduped.has(canonicalId)) continue;
+
+    deduped.set(canonicalId, {
+      canonical_id: canonicalId,
+      name: author?.name || "Unknown author",
+      url: author?.url || "",
+      role: author?.role || "",
+      type: author?.type,
+      raw_source: {
+        source_post_canonical_id: post.canonical_id,
+        source_post_url: post.url,
+        source_post_text: post.text
+      },
+      seen_at: seenAt
     });
   }
 
@@ -376,19 +413,75 @@ export const runPostFirstPipeline = async (
     });
   }
 
-  stats.authorsDiscovered = 0;
-  stats.authorsScored = 0;
-  stats.authorsSelected = 0;
-  stats.authorPostsFetched = 0;
+  const qualifyingDiscoveryPosts = scoredDiscoveryPosts.filter(
+    (post) => (post.score?.post_score ?? 0) >= taskConfig.minPostScoreForComments
+  );
+  const authorSeeds = buildAuthorSeedsFromPosts(qualifyingDiscoveryPosts);
+  stats.authorsDiscovered = authorSeeds.length;
+
+  const missingAuthorSeeds: AuthorSeed[] = [];
+  for (const seed of authorSeeds) {
+    const existingAuthor = await convex.query("authors.getByCanonicalId", {
+      canonicalId: seed.canonical_id
+    });
+    if (!existingAuthor) missingAuthorSeeds.push(seed);
+  }
+
+  stats.authorsSelected = missingAuthorSeeds.length;
   await convex.mutation("runs.updateStatus", {
     id: runId,
     status: "running",
-    message: "Filtering discovery posts for comments.",
+    message: `Hydrating ${missingAuthorSeeds.length} new authors from ${qualifyingDiscoveryPosts.length} qualifying posts.`,
     stats
   });
 
-  const finalPosts = mergePostsByCanonicalId(scoredDiscoveryPosts);
+  const monthlyAuthorPostItems: unknown[] = [];
+  for (const seed of missingAuthorSeeds) {
+    const monthItems = await runApifyTask(taskConfig.postsTaskId, buildAuthorPostsInput(taskConfig, seed), {
+      token: appConfig.apifyToken,
+      timeoutSeconds: appConfig.apifyTimeoutSeconds
+    });
+    monthlyAuthorPostItems.push(...monthItems);
+    stats.authorPostsFetched = monthlyAuthorPostItems.length;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Fetched month posts for ${seed.name}.`,
+      stats
+    });
+  }
+
+  const normalizedMonthlyAuthorPosts = normalizePostRecords(monthlyAuthorPostItems);
+  const totalPostScoringTarget = scoredDiscoveryPosts.length + normalizedMonthlyAuthorPosts.length;
+  stats.postsFetched = totalPostScoringTarget;
+  const scoredMonthlyAuthorPosts: StoredPost[] = [];
+  for (const post of normalizedMonthlyAuthorPosts) {
+    scoredMonthlyAuthorPosts.push(await scorePost(post, appConfig, taskConfig));
+    stats.postsScored += 1;
+    await convex.mutation("runs.updateStatus", {
+      id: runId,
+      status: "running",
+      message: `Scored month posts ${stats.postsScored}/${stats.postsFetched}.`,
+      stats
+    });
+  }
+
+  const finalPosts = mergePostsByCanonicalId([...scoredDiscoveryPosts, ...scoredMonthlyAuthorPosts]);
   await convex.mutation("posts.upsertMany", { posts: finalPosts });
+
+  if (missingAuthorSeeds.length) {
+    await convex.mutation("authors.upsertMany", {
+      authors: missingAuthorSeeds.map((seed) => ({
+        canonical_id: seed.canonical_id,
+        name: seed.name,
+        url: seed.url,
+        role: seed.role,
+        type: seed.type,
+        raw_source: seed.raw_source,
+        seen_at: seed.seen_at
+      }))
+    });
+  }
 
   const topPosts = topPostsForComments(finalPosts, taskConfig, false);
   const allCommentItems: unknown[] = [];

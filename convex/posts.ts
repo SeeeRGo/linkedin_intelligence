@@ -81,6 +81,20 @@ export const getByCanonicalId = query({
   }
 });
 
+export const listByAuthorCanonicalId = query({
+  args: {
+    authorCanonicalId: v.string(),
+    limit: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("posts")
+      .withIndex("by_authorCanonicalId", (q) => q.eq("authorCanonicalId", args.authorCanonicalId))
+      .order("desc")
+      .take(args.limit ?? 50);
+  }
+});
+
 export const updateManualAnnotation = mutation({
   args: {
     canonicalId: v.string(),

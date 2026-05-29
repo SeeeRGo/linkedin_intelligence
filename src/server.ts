@@ -327,6 +327,11 @@ const handleApi = async (req: IncomingMessage, res: ServerResponse, url: URL) =>
     return;
   }
 
+  if (url.pathname === "/api/leaderboard" && req.method === "GET") {
+    sendJson(res, 200, await convex.query("authors.leaderboard", { limit: Number(url.searchParams.get("limit")) || 50 }));
+    return;
+  }
+
   if (url.pathname === "/api/posts/manual-score" && req.method === "POST") {
     const body = await readBody(req);
     const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
